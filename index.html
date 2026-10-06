@@ -1,0 +1,1001 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Склад запчастей</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231e5aa8'/><path d='M8 12l8-4 8 4v9l-8 4-8-4z' fill='none' stroke='white' stroke-width='2'/><path d='M8 12l8 4 8-4M16 16v9' stroke='white' stroke-width='2' fill='none'/></svg>">
+<style>
+:root{
+  --bg:#f4f6f9; --panel:#fff; --line:#e3e7ee; --line2:#cfd6e1; --text:#1d2433; --muted:#6b7487; --faint:#98a1b3;
+  --accent:#1e5aa8; --accent2:#2f6fc4; --accentbg:#e8f0fb; --nav:#17325c; --navtext:#c9d6ea;
+  --green:#178a4c; --greenbg:#e6f5ec; --red:#c0392b; --redbg:#fbeaea; --amber:#b26a00; --amberbg:#fdf3e1; --gray:#8a93a5;
+  --r:6px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text);background:var(--bg)}
+a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+button,input,select,textarea{font:inherit;color:inherit}
+input,select,textarea{border:1px solid var(--line2);border-radius:var(--r);padding:6px 9px;background:#fff;min-height:34px;width:100%}
+textarea{min-height:60px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px #2f6fc433}
+input[type=checkbox]{width:auto;min-height:0}
+button{border:1px solid var(--line2);background:#fff;border-radius:var(--r);padding:6px 12px;min-height:34px;cursor:pointer;white-space:nowrap}
+button:hover{background:#f1f4f9}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff} button.primary:hover{background:var(--accent2)}
+button.green{background:var(--green);border-color:var(--green);color:#fff}
+button.danger{color:var(--red);border-color:#e7b9b4}
+button.link{border:0;background:none;color:var(--accent);padding:0;min-height:0}
+button:disabled{opacity:.5;cursor:default}
+.hidden{display:none!important}
+/* layout */
+#app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:52px 1fr;height:100vh}
+#top{grid-column:1/3;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 16px}
+#top .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:16px;min-width:190px;color:var(--text)}
+#top .brand svg{flex:none}
+#gsearch{max-width:460px}
+#top .user{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted)}
+#burger{display:none}
+#nav{background:var(--nav);color:var(--navtext);overflow:auto;padding:8px 0 20px}
+#nav .grp{padding:14px 18px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8ea3c4}
+#nav a{display:block;padding:6px 18px 6px 26px;color:var(--navtext);font-size:13.5px}
+#nav a:hover{background:#ffffff12;text-decoration:none;color:#fff}
+#nav a.on{background:#ffffff1f;color:#fff;box-shadow:inset 3px 0 0 #7fb0ff}
+#main{overflow:auto;padding:18px 22px 60px}
+h1{font-size:20px;font-weight:600;margin:0}
+h2{font-size:15px;font-weight:600;margin:0 0 10px}
+.head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.head .sp{flex:1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.toolbar input,.toolbar select{width:auto;min-width:150px}
+.toolbar input[type=checkbox]{min-width:0}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))} .g3{grid-template-columns:repeat(3,minmax(0,1fr))} .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+label.f{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.field{min-width:0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.card .l{font-size:12px;color:var(--muted)} .card .v{font-size:22px;font-weight:600;margin-top:2px} .card .s{font-size:12px;color:var(--faint)}
+.v.green{color:var(--green)} .v.red{color:var(--red)}
+/* tables */
+.tw{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+table{border-collapse:collapse;width:100%}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{background:#f7f9fc;font-weight:600;font-size:12.5px;color:#46506a;position:sticky;top:0;z-index:1;white-space:nowrap}
+tr.click{cursor:pointer} tr.click:hover td{background:#f5f8fd}
+td.n,th.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+tfoot td{font-weight:600;background:#fafbfd}
+.muted{color:var(--muted)} .faint{color:var(--faint)} .small{font-size:12px}
+.pos{color:var(--green)} .neg{color:var(--red)}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;white-space:nowrap}
+.b-draft{background:#eef1f6;color:#4f5a70} .b-posted{background:var(--greenbg);color:var(--green)} .b-reserved{background:var(--amberbg);color:var(--amber)}
+.b-done{background:var(--accentbg);color:var(--accent)} .b-cancelled{background:#f0f0f0;color:var(--gray)} .b-old{background:var(--redbg);color:var(--red)}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.items td input{min-height:30px;padding:4px 7px}
+.picker{position:relative}
+.dd{position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid var(--line2);border-radius:var(--r);box-shadow:0 8px 24px #0002;z-index:30;max-height:300px;overflow:auto}
+.dd div{padding:7px 10px;cursor:pointer;border-bottom:1px solid #f0f2f6}
+.dd div:hover,.dd div.act{background:var(--accentbg)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px;flex-wrap:wrap}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted)}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+#toast{position:fixed;right:18px;bottom:18px;z-index:99;display:flex;flex-direction:column;gap:8px}
+#toast div{background:#1d2433;color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 6px 20px #0003;max-width:380px}
+#toast div.err{background:var(--red)}
+.modal-bg{position:fixed;inset:0;background:#0006;z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+.modal{background:#fff;border-radius:10px;width:100%;max-width:560px;padding:18px 20px}
+.modal .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+#login .box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:28px;width:100%;max-width:380px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chart{height:220px;position:relative}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px} .kv div:nth-child(odd){color:var(--muted)}
+@media (max-width:860px){
+  #app{grid-template-columns:1fr}
+  #nav{position:fixed;top:52px;bottom:0;left:0;width:240px;z-index:40;transform:translateX(-100%);transition:.2s}
+  #nav.open{transform:none}
+  #burger{display:inline-flex}
+  #top .brand span{display:none} #top .brand{min-width:0}
+  #top .user .nm{display:none}
+  #main{grid-column:1;padding:14px 12px 60px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+}
+@media print{
+  #top,#nav,.noprint,.toolbar,.head button{display:none!important}
+  #app{display:block;height:auto} #main{overflow:visible;padding:0}
+  .panel,.tw{border:0} body{background:#fff}
+}
+</style>
+</head>
+<body>
+<div id="login" class="hidden">
+  <div class="box">
+    <div class="row" style="gap:10px;margin-bottom:18px">
+      <svg width="34" height="34" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1e5aa8"/><path d="M8 12l8-4 8 4v9l-8 4-8-4z" fill="none" stroke="#fff" stroke-width="2"/><path d="M8 12l8 4 8-4M16 16v9" stroke="#fff" stroke-width="2" fill="none"/></svg>
+      <div><div style="font-weight:600;font-size:17px">Склад запчастей</div><div class="muted small">Учёт б/у комплектующих</div></div>
+    </div>
+    <div id="lmode" class="tabs"><button class="on" data-m="in">Вход</button><button data-m="up">Первый вход</button><button data-m="reset">Забыли пароль</button></div>
+    <div class="field" style="margin-bottom:10px"><label class="f">Email</label><input id="lemail" type="email" autocomplete="username"></div>
+    <div class="field" id="lpassw" style="margin-bottom:14px"><label class="f">Пароль</label><input id="lpass" type="password" autocomplete="current-password"></div>
+    <button class="primary" id="lgo" style="width:100%">Войти</button>
+    <p id="lmsg" class="small muted" style="margin:12px 0 0"></p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header id="top">
+    <button id="burger" aria-label="Меню">☰</button>
+    <a class="brand" href="#/dashboard"><svg width="26" height="26" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1e5aa8"/><path d="M8 12l8-4 8 4v9l-8 4-8-4z" fill="none" stroke="#fff" stroke-width="2"/><path d="M8 12l8 4 8-4M16 16v9" stroke="#fff" stroke-width="2" fill="none"/></svg><span>Склад запчастей</span></a>
+    <input id="gsearch" placeholder="Поиск: модель, серийный номер, документ, контрагент">
+    <div class="user"><span class="nm" id="uname"></span><button id="logout">Выйти</button></div>
+  </header>
+  <nav id="nav">
+    <a href="#/dashboard">Показатели</a>
+    <div class="grp">Закупки</div>
+    <a href="#/docs/purchase">Приёмки</a>
+    <a href="#/docs/supplier_return">Возвраты поставщикам</a>
+    <div class="grp">Продажи</div>
+    <a href="#/docs/order">Заказы покупателей</a>
+    <a href="#/docs/sale">Отгрузки</a>
+    <a href="#/docs/customer_return">Возвраты покупателей</a>
+    <div class="grp">Товары</div>
+    <a href="#/products">Товары</a>
+    <a href="#/stock">Остатки</a>
+    <a href="#/docs/enter">Оприходования</a>
+    <a href="#/docs/writeoff">Списания</a>
+    <a href="#/inventory">Инвентаризация</a>
+    <div class="grp">Деньги</div>
+    <a href="#/payments">Платежи</a>
+    <a href="#/money">Остатки денег</a>
+    <a href="#/settlements">Взаиморасчёты</a>
+    <div class="grp">Контрагенты</div>
+    <a href="#/counterparties">Поставщики и покупатели</a>
+    <div class="grp">Отчёты</div>
+    <a href="#/reports/profit">Прибыльность</a>
+    <a href="#/reports/turnover">Обороты товаров</a>
+    <a href="#/reports/stale">Залежавшийся товар</a>
+    <div class="grp">Настройки</div>
+    <a href="#/settings">Справочники</a>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const SB_URL = 'https://hsgpddcgrdobgfzrnmjz.supabase.co';
+const SB_KEY = 'sb_publishable_i2q2SL5deqqE1y4kZIhXrA_Mvvc0GtB';
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const STALE_DAYS = 60;
+
+const T = {
+  purchase:{one:'Приёмка',many:'Приёмки',cp:'Поставщик',extra:'Доставка и накладные расходы',price:'Цена закупки',sign:1},
+  supplier_return:{one:'Возврат поставщику',many:'Возвраты поставщикам',cp:'Поставщик',extra:'Расходы по возврату',price:'Цена',sign:-1},
+  order:{one:'Заказ покупателя',many:'Заказы покупателей',cp:'Покупатель',extra:'Ожидаемые расходы',price:'Цена продажи',sign:0},
+  sale:{one:'Отгрузка',many:'Отгрузки',cp:'Покупатель',extra:'Расходы при продаже (доставка, комиссия)',price:'Цена продажи',sign:-1},
+  customer_return:{one:'Возврат покупателя',many:'Возвраты покупателей',cp:'Покупатель',extra:'Расходы по возврату',price:'Цена возврата',sign:1},
+  enter:{one:'Оприходование',many:'Оприходования',cp:null,extra:'Накладные расходы',price:'Себестоимость за шт',sign:1},
+  writeoff:{one:'Списание',many:'Списания',cp:null,extra:null,price:'Оценка за шт',sign:-1},
+};
+const STATUS = {draft:'Черновик',posted:'Проведён',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
+const ORDER_STATUS = {draft:'Новый',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
+const CONDITIONS = ['Рабочее','Не проверено','Требует ремонта','На запчасти'];
+const KIND = {supplier:'Поставщик',customer:'Покупатель',both:'Поставщик и покупатель'};
+const OPEX_EXCLUDE = ['Оплата поставщику','Возврат покупателю','Изъятие учредителя'];
+
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nf = new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0});
+const nf2 = new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
+const money = v => nf.format(Math.round(+v||0)) + ' ₸';
+const num = v => nf2.format(+v||0);
+const pct = v => (isFinite(v) ? (v*100).toFixed(1).replace('.',',') : '0') + '%';
+const today = () => new Date().toISOString().slice(0,10);
+const fdate = s => s ? s.slice(0,10).split('-').reverse().join('.') : '';
+const monthStart = (d=new Date()) => new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('sv');
+const monthEnd = (d=new Date()) => new Date(d.getFullYear(), d.getMonth()+1, 0).toLocaleDateString('sv');
+const sum = (a, f) => a.reduce((s,x) => s + (+f(x)||0), 0);
+const badge = (st, type) => `<span class="badge b-${st}">${esc(type==='order' ? ORDER_STATUS[st] : STATUS[st])}</span>`;
+const debounce = (fn, ms=250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+function toast(msg, err=false){
+  const d = document.createElement('div'); d.textContent = msg; if (err) d.className = 'err';
+  $('#toast').appendChild(d); setTimeout(() => d.remove(), err ? 7000 : 3500);
+}
+async function q(p){
+  const { data, error } = await p;
+  if (error){ toast(error.message, true); throw error; }
+  return data;
+}
+function modal(html, onReady){
+  const bg = document.createElement('div'); bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">${html}</div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.addEventListener('mousedown', e => { if (e.target === bg) close(); });
+  onReady && onReady(bg.firstElementChild, close);
+  return close;
+}
+function confirmBox(text){
+  return new Promise(res => modal(`<p style="margin-top:0">${esc(text)}</p><div class="acts"><button data-n>Отмена</button><button class="primary" data-y>Да</button></div>`,
+    (m, close) => { $('[data-n]',m).onclick = () => { close(); res(false); }; $('[data-y]',m).onclick = () => { close(); res(true); }; }));
+}
+
+/* ---------- справочники в памяти ---------- */
+const C = { categories:[], channels:[], accounts:[], items:[], cps:[], products:[], me:'' };
+async function loadRefs(){
+  const [cat, ch, acc, it, cps] = await Promise.all([
+    q(sb.from('categories').select('*').order('sort').order('name')),
+    q(sb.from('channels').select('*').order('sort').order('name')),
+    q(sb.from('accounts').select('*').order('sort').order('name')),
+    q(sb.from('expense_items').select('*').order('sort').order('name')),
+    q(sb.from('counterparties').select('id,name,kind,phone').order('name')),
+  ]);
+  Object.assign(C, { categories:cat, channels:ch, accounts:acc, items:it, cps });
+}
+async function loadProducts(){ C.products = await q(sb.from('v_stock').select('*').order('name')); return C.products; }
+const opts = (arr, sel, empty) => (empty !== undefined ? `<option value="">${esc(empty)}</option>` : '') +
+  arr.map(x => `<option value="${x.id}" ${String(x.id)===String(sel)?'selected':''}>${esc(x.name)}</option>`).join('');
+
+/* ---------- авторизация ---------- */
+let loginMode = 'in';
+$$('#lmode button').forEach(b => b.onclick = () => {
+  loginMode = b.dataset.m; $$('#lmode button').forEach(x => x.classList.toggle('on', x===b));
+  $('#lpassw').classList.toggle('hidden', loginMode==='reset');
+  $('#lgo').textContent = {in:'Войти', up:'Создать пароль', reset:'Отправить ссылку'}[loginMode];
+  $('#lmsg').textContent = loginMode==='up' ? 'Для Сергея и Ильяса: укажите свой email и придумайте пароль (не короче 6 символов).' : '';
+});
+$('#lgo').onclick = async () => {
+  const email = $('#lemail').value.trim(), password = $('#lpass').value;
+  const msg = $('#lmsg'); msg.textContent = '';
+  if (!email){ msg.textContent = 'Введите email.'; return; }
+  if (loginMode !== 'reset' && password.length < 6){ msg.textContent = 'Пароль должен быть не короче 6 символов.'; return; }
+  let r;
+  if (loginMode==='in') r = await sb.auth.signInWithPassword({ email, password });
+  else if (loginMode==='up') r = await sb.auth.signUp({ email, password, options:{ emailRedirectTo: location.origin + location.pathname } });
+  else r = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  if (r.error){ msg.textContent = r.error.message === 'Invalid login credentials' ? 'Неверный email или пароль.' : r.error.message; return; }
+  if (loginMode==='up' && !r.data.session) msg.textContent = 'Готово. Если на почту пришло письмо, подтвердите адрес и затем войдите.';
+  if (loginMode==='reset') msg.textContent = 'Письмо со ссылкой отправлено на почту.';
+};
+$('#lpass').addEventListener('keydown', e => { if (e.key==='Enter') $('#lgo').click(); });
+$('#logout').onclick = () => sb.auth.signOut();
+
+sb.auth.onAuthStateChange(async (ev, session) => {
+  if (ev === 'PASSWORD_RECOVERY'){
+    const p = prompt('Введите новый пароль (не короче 6 символов)');
+    if (p && p.length >= 6){ const { error } = await sb.auth.updateUser({ password:p }); toast(error ? error.message : 'Пароль изменён', !!error); }
+  }
+  if (session) start(session); else { $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); }
+});
+
+let started = false;
+async function start(session){
+  $('#login').classList.add('hidden');
+  const { data:isM } = await sb.rpc('is_member');
+  if (!isM){
+    $('#login').classList.remove('hidden');
+    $('#lmsg').textContent = 'У этого email нет доступа к складу. Обратитесь к владельцу.';
+    await sb.auth.signOut(); return;
+  }
+  const { data:nm } = await sb.rpc('current_member_name');
+  C.me = nm || session.user.email; $('#uname').textContent = C.me;
+  $('#app').classList.remove('hidden');
+  if (started) return; started = true;
+  await loadRefs();
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+/* ---------- роутер ---------- */
+const routes = [
+  [/^\/dashboard$/, viewDashboard],
+  [/^\/products$/, viewProducts],
+  [/^\/product\/(new|\d+)$/, viewProduct],
+  [/^\/stock$/, viewStock],
+  [/^\/docs\/(\w+)$/, viewDocs],
+  [/^\/doc\/new\/(\w+)$/, (t) => viewDoc(null, t)],
+  [/^\/doc\/(\d+)$/, (id) => viewDoc(+id)],
+  [/^\/inventory$/, viewInventory],
+  [/^\/payments$/, viewPayments],
+  [/^\/money$/, viewMoney],
+  [/^\/settlements$/, viewSettlements],
+  [/^\/counterparties$/, viewCounterparties],
+  [/^\/counterparty\/(new|\d+)$/, viewCounterparty],
+  [/^\/reports\/profit$/, viewProfit],
+  [/^\/reports\/turnover$/, viewTurnover],
+  [/^\/reports\/stale$/, viewStale],
+  [/^\/settings$/, viewSettings],
+  [/^\/search$/, viewSearch],
+];
+let charts = [];
+async function route(){
+  const h = location.hash.slice(1) || '/dashboard';
+  const [path, qs] = h.split('?');
+  const params = new URLSearchParams(qs || '');
+  $('#nav').classList.remove('open');
+  window.onbeforeunload = null;
+  const markNav = () => $$('#nav a').forEach(a => a.classList.toggle('on', ('#'+path) === a.getAttribute('href') ||
+     (path.startsWith('/doc/') && a.getAttribute('href') === '#/docs/' + (window.__lastDocType||'')) ));
+  markNav();
+  charts.forEach(c => c.destroy()); charts = [];
+  const main = $('#main');
+  for (const [re, fn] of routes){
+    const m = path.match(re);
+    if (m){
+      main.innerHTML = '<div class="empty">Загрузка…</div>';
+      const args = m.length > 1 ? m.slice(1) : [undefined];
+      try { await fn(...args, params); } catch(e){ console.error(e); main.innerHTML = `<div class="empty">Ошибка: ${esc(e.message||e)}</div>`; }
+      markNav(); main.scrollTop = 0; return;
+    }
+  }
+  location.hash = '#/dashboard';
+}
+const go = h => { location.hash = h; };
+$('#burger').onclick = () => $('#nav').classList.toggle('open');
+$('#gsearch').addEventListener('keydown', e => { if (e.key==='Enter' && e.target.value.trim()) go('#/search?q=' + encodeURIComponent(e.target.value.trim())); });
+
+/* ---------- Показатели ---------- */
+async function viewDashboard(_, params){
+  const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd();
+  const [lines, pays, stock, bal, recent, cpb] = await Promise.all([
+    q(sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to)),
+    q(sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date',from).lte('pay_date',to)),
+    loadProducts(),
+    q(sb.from('v_account_balances').select('*').order('sort')),
+    q(sb.from('v_doc_totals').select('*').order('created_at',{ascending:false}).limit(8)),
+    q(sb.from('v_counterparty_balances').select('balance')),
+  ]);
+  const revenue = sum(lines, x=>x.revenue), gross = sum(lines, x=>x.profit);
+  const opex = sum(pays.filter(p => p.direction==='out' && !OPEX_EXCLUDE.includes(p.expense_items?.name)), p=>p.amount);
+  const soldQty = sum(lines, x=>x.qty);
+  const saleDocs = new Set(lines.filter(x=>x.type==='sale').map(x=>x.document_id)).size;
+  const inStock = stock.filter(p => p.stock > 0);
+  const stale = inStock.filter(p => p.days_in_stock >= STALE_DAYS);
+  const owe = sum(cpb.filter(x=>x.balance>0), x=>x.balance), weOwe = -sum(cpb.filter(x=>x.balance<0), x=>x.balance);
+  $('#main').innerHTML = `
+  <div class="head"><h1>Показатели</h1><div class="sp"></div>
+    <label class="small muted">с</label><input type="date" id="df" value="${from}" style="width:auto">
+    <label class="small muted">по</label><input type="date" id="dt" value="${to}" style="width:auto">
+    <button id="dgo">Показать</button></div>
+  <div class="cards">
+    <div class="card"><div class="l">Выручка</div><div class="v">${money(revenue)}</div><div class="s">${saleDocs} отгрузок · ${num(soldQty)} шт</div></div>
+    <div class="card"><div class="l">Валовая прибыль</div><div class="v ${gross>=0?'green':'red'}">${money(gross)}</div><div class="s">маржа ${pct(revenue? gross/revenue : 0)}</div></div>
+    <div class="card"><div class="l">Операционные расходы</div><div class="v">${money(opex)}</div><div class="s">аренда, реклама, доставка и др.</div></div>
+    <div class="card"><div class="l">Чистая прибыль</div><div class="v ${gross-opex>=0?'green':'red'}">${money(gross-opex)}</div><div class="s">прибыль минус расходы</div></div>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="l">На складе</div><div class="v">${num(sum(inStock,p=>p.stock))} шт</div><div class="s">${inStock.length} позиций · в резерве ${num(sum(stock,p=>p.reserved))}</div></div>
+    <div class="card"><div class="l">Склад по себестоимости</div><div class="v">${money(sum(inStock,p=>p.stock_value))}</div><div class="s">деньги в товаре</div></div>
+    <div class="card"><div class="l">Залежалось > ${STALE_DAYS} дней</div><div class="v ${stale.length?'red':''}">${stale.length} поз.</div><div class="s"><a href="#/reports/stale">${money(sum(stale,p=>p.stock_value))} в товаре</a></div></div>
+    <div class="card"><div class="l">Деньги на счетах</div><div class="v">${money(sum(bal,b=>b.balance))}</div><div class="s">${bal.map(b=>esc(b.name)+': '+money(b.balance)).join(' · ')}</div></div>
+    <div class="card"><div class="l">Долги</div><div class="v small" style="font-size:15px;margin-top:6px">Нам должны: ${money(owe)}<br>Мы должны: ${money(weOwe)}</div><div class="s"><a href="#/settlements">взаиморасчёты</a></div></div>
+  </div>
+  <div class="grid g2">
+    <div class="panel"><h2>Продажи и прибыль по дням</h2><div class="chart"><canvas id="ch1"></canvas></div></div>
+    <div class="panel"><h2>Прибыль по категориям</h2><div class="chart"><canvas id="ch2"></canvas></div></div>
+  </div>
+  <div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Последние документы</h2><div style="flex:1"></div>
+    <button onclick="go('#/doc/new/purchase')">+ Приёмка</button><button class="primary" onclick="go('#/doc/new/sale')">+ Отгрузка</button></div>
+    ${docTable(recent, true)}</div>`;
+  $('#dgo').onclick = () => go(`#/dashboard?from=${$('#df').value}&to=${$('#dt').value}`);
+  bindDocRows();
+  const days = {}; for (let d = new Date(from); d <= new Date(to); d.setDate(d.getDate()+1)) days[d.toLocaleDateString('sv')] = {r:0,p:0};
+  lines.forEach(x => { if (days[x.doc_date]){ days[x.doc_date].r += +x.revenue; days[x.doc_date].p += +x.profit; } });
+  const keys = Object.keys(days);
+  if (window.Chart){
+    charts.push(new Chart($('#ch1'), { type:'bar', data:{ labels:keys.map(k=>k.slice(8)+'.'+k.slice(5,7)),
+      datasets:[{label:'Выручка',data:keys.map(k=>days[k].r),backgroundColor:'#9dbbe6'},{label:'Прибыль',data:keys.map(k=>days[k].p),backgroundColor:'#178a4c'}]},
+      options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{y:{ticks:{callback:v=>nf.format(v)}}}}}));
+    const bc = {}; lines.forEach(x => bc[x.category||'Без категории'] = (bc[x.category||'Без категории']||0) + +x.profit);
+    const ck = Object.keys(bc).sort((a,b)=>bc[b]-bc[a]);
+    charts.push(new Chart($('#ch2'), { type:'bar', data:{ labels:ck, datasets:[{label:'Прибыль',data:ck.map(k=>bc[k]),backgroundColor:'#1e5aa8'}]},
+      options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>nf.format(v)}}}}}));
+  }
+}
+
+/* ---------- Товары ---------- */
+async function viewProducts(_, params){
+  await loadProducts();
+  const st = { q: params.get('q')||'', cat:'', only:'all', arch:false };
+  $('#main').innerHTML = `
+  <div class="head"><h1>Товары</h1><div class="sp"></div><button onclick="exportCSV('products')">Экспорт CSV</button><button class="primary" onclick="go('#/product/new')">+ Товар</button></div>
+  <div class="toolbar">
+    <input id="pq" placeholder="Название, код, серийный номер, штрихкод" value="${esc(st.q)}" style="flex:1;max-width:420px">
+    <select id="pc">${opts(C.categories,'','Все категории')}</select>
+    <select id="po"><option value="all">Все</option><option value="in">В наличии</option><option value="out">Нет в наличии</option></select>
+    <label class="row small"><input type="checkbox" id="pa"> архив</label>
+  </div><div id="plist"></div>`;
+  const draw = () => {
+    const s = st.q.toLowerCase();
+    const rows = C.products.filter(p => (st.arch ? p.archived : !p.archived) &&
+      (!st.cat || String(p.category_id)===st.cat) &&
+      (st.only==='all' || (st.only==='in' ? p.stock>0 : p.stock<=0)) &&
+      (!s || [p.code,p.name,p.serial,p.barcode,p.description,p.location].some(v => (v||'').toLowerCase().includes(s))));
+    $('#plist').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Наименование</th><th>Категория</th><th>Состояние</th><th>Серийный №</th>
+      <th class="n">Остаток</th><th class="n">Резерв</th><th class="n">Себестоимость</th><th class="n">Цена продажи</th><th class="n">Дней</th></tr></thead><tbody>
+      ${rows.map(p => `<tr class="click" data-id="${p.id}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.condition)}</td>
+        <td class="small">${esc(p.serial)}</td><td class="n">${num(p.stock)}</td><td class="n">${p.reserved?num(p.reserved):''}</td>
+        <td class="n">${p.avg_cost?money(p.avg_cost):''}</td><td class="n">${p.sale_price?money(p.sale_price):''}</td>
+        <td class="n">${p.days_in_stock!=null ? (p.days_in_stock>=STALE_DAYS?`<span class="badge b-old">${p.days_in_stock}</span>`:p.days_in_stock) : ''}</td></tr>`).join('')}
+      </tbody></table></div><p class="small muted">Показано: ${rows.length}</p>` : `<div class="panel empty">Товаров не найдено. Товар создаётся кнопкой «+ Товар» или прямо в приёмке.</div>`;
+    $$('#plist tr.click').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.id));
+  };
+  $('#pq').oninput = debounce(e => { st.q = e.target.value; draw(); }, 150);
+  $('#pc').onchange = e => { st.cat = e.target.value; draw(); };
+  $('#po').onchange = e => { st.only = e.target.value; draw(); };
+  $('#pa').onchange = e => { st.arch = e.target.checked; draw(); };
+  draw();
+}
+
+function productForm(p={}){
+  return `<div class="grid g3">
+    <div class="field" style="grid-column:span 2"><label class="f">Наименование *</label><input name="name" value="${esc(p.name)}" placeholder="MSI GTX 1060 6GB"></div>
+    <div class="field"><label class="f">Код</label><input name="code" value="${esc(p.code)}" placeholder="присвоится автоматически"></div>
+    <div class="field"><label class="f">Категория</label><select name="category_id">${opts(C.categories,p.category_id,'—')}</select></div>
+    <div class="field"><label class="f">Состояние</label><select name="condition">${CONDITIONS.map(c=>`<option ${c===(p.condition||'Рабочее')?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label class="f">Серийный номер</label><input name="serial" value="${esc(p.serial)}"></div>
+    <div class="field"><label class="f">Штрихкод</label><input name="barcode" value="${esc(p.barcode)}"></div>
+    <div class="field"><label class="f">Цена продажи, ₸</label><input name="sale_price" type="number" step="1" value="${p.sale_price??''}"></div>
+    <div class="field"><label class="f">Минимальная цена, ₸</label><input name="min_price" type="number" step="1" value="${p.min_price??''}"></div>
+    <div class="field"><label class="f">Место хранения</label><input name="location" value="${esc(p.location)}" placeholder="Полка 2, коробка 5"></div>
+    <div class="field" style="grid-column:span 2"><label class="f">Ссылка на фото</label><input name="photo_url" value="${esc(p.photo_url)}" placeholder="https://…"></div>
+    <div class="field" style="grid-column:1/-1"><label class="f">Описание (ревизия, дефекты, комплектация)</label><textarea name="description">${esc(p.description)}</textarea></div>
+  </div>`;
+}
+function readForm(el){
+  const o = {};
+  $$('[name]', el).forEach(i => {
+    let v = i.type==='checkbox' ? i.checked : i.value.trim();
+    if (i.type==='number' || /_id$/.test(i.name)) v = v==='' ? null : +v;
+    else if (v==='' ) v = null;
+    o[i.name] = v;
+  });
+  return o;
+}
+async function viewProduct(id){
+  const isNew = id==='new';
+  let p = {};
+  if (!isNew) p = await q(sb.from('v_stock').select('*').eq('id',id).single());
+  const hist = isNew ? [] : await q(sb.from('document_items').select('qty,price,unit_cost,extra_share,documents!inner(id,type,number,doc_date,status,counterparties(name))').eq('product_id',id));
+  hist.sort((a,b) => (b.documents.doc_date).localeCompare(a.documents.doc_date));
+  const posted = hist.filter(h => h.documents.status==='posted');
+  const sales = posted.filter(h => h.documents.type==='sale');
+  const profit = sum(sales, h => h.qty*h.price - h.qty*(h.unit_cost||0) - h.extra_share);
+  $('#main').innerHTML = `
+  <div class="head"><a href="#/products">← Товары</a></div>
+  <div class="head"><h1>${isNew ? 'Новый товар' : esc(p.name)}</h1>${!isNew && p.archived ? '<span class="badge b-cancelled">в архиве</span>':''}<div class="sp"></div>
+    ${isNew ? '' : `<button onclick="go('#/doc/new/sale?product=${p.id}')">Продать</button><button id="arch">${p.archived?'Вернуть из архива':'В архив'}</button><button class="danger" id="pdel">Удалить</button>`}
+    <button class="primary" id="psave">Сохранить</button></div>
+  ${isNew ? '' : `<div class="cards">
+    <div class="card"><div class="l">Остаток</div><div class="v">${num(p.stock)} шт</div><div class="s">резерв ${num(p.reserved)} · доступно ${num(p.available)}</div></div>
+    <div class="card"><div class="l">Себестоимость за шт</div><div class="v">${money(p.avg_cost)}</div><div class="s">с доставкой и накладными</div></div>
+    <div class="card"><div class="l">На складе дней</div><div class="v ${p.days_in_stock>=STALE_DAYS?'red':''}">${p.days_in_stock ?? '—'}</div><div class="s">последний приход ${fdate(p.last_in)||'—'}</div></div>
+    <div class="card"><div class="l">Прибыль с продаж</div><div class="v ${profit>=0?'green':'red'}">${money(profit)}</div><div class="s">продано ${num(sum(sales,h=>h.qty))} шт</div></div>
+  </div>`}
+  <div class="panel" id="pform">${productForm(p)}
+    ${p.photo_url ? `<p><a href="${esc(p.photo_url)}" target="_blank" rel="noopener">Открыть фото</a></p>`:''}
+    ${isNew ? '' : `<p class="small muted">Создал: ${esc(p.created_by)}, ${fdate(p.created_at)}</p>`}</div>
+  ${isNew ? '' : `<div class="panel"><h2>История движения</h2>${hist.length ? `<div class="tw"><table><thead><tr><th>Дата</th><th>Документ</th><th>Контрагент</th><th>Статус</th><th class="n">Кол-во</th><th class="n">Цена</th><th class="n">Себестоимость</th></tr></thead><tbody>
+    ${hist.map(h => { const d = h.documents, sg = T[d.type].sign; return `<tr class="click" data-doc="${d.id}"><td>${fdate(d.doc_date)}</td><td>${T[d.type].one} ${esc(d.number)}</td><td>${esc(d.counterparties?.name)}</td><td>${badge(d.status,d.type)}</td>
+      <td class="n ${sg>0?'pos':sg<0?'neg':''}">${sg>0?'+':sg<0?'−':''}${num(h.qty)}</td><td class="n">${money(h.price)}</td><td class="n">${h.unit_cost!=null?money(h.unit_cost):''}</td></tr>`; }).join('')}
+    </tbody></table></div>` : '<div class="empty">Движений пока нет. Чтобы товар появился на складе, оформите приёмку или оприходование.</div>'}</div>`}`;
+  $$('tr[data-doc]').forEach(tr => tr.onclick = () => go('#/doc/' + tr.dataset.doc));
+  $('#psave').onclick = async () => {
+    const o = readForm($('#pform'));
+    if (!o.name){ toast('Введите наименование', true); return; }
+    if (isNew){ const r = await q(sb.from('products').insert(o).select().single()); toast('Товар создан'); go('#/product/' + r.id); }
+    else { await q(sb.from('products').update(o).eq('id', id)); toast('Сохранено'); route(); }
+  };
+  if (!isNew){
+    $('#arch').onclick = async () => { await q(sb.from('products').update({archived:!p.archived}).eq('id',id)); route(); };
+    $('#pdel').onclick = async () => {
+      if (hist.length){ toast('По товару есть документы. Его можно только отправить в архив.', true); return; }
+      if (await confirmBox('Удалить товар?')){ await q(sb.from('products').delete().eq('id',id)); toast('Удалено'); go('#/products'); }
+    };
+  }
+}
+
+/* ---------- Остатки ---------- */
+async function viewStock(){
+  await loadProducts();
+  const st = { q:'', cat:'', zero:false };
+  $('#main').innerHTML = `
+  <div class="head"><h1>Остатки</h1><div class="sp"></div><button onclick="exportCSV('stock')">Экспорт CSV</button><button onclick="print()">Печать</button></div>
+  <div class="toolbar"><input id="sq" placeholder="Поиск" style="flex:1;max-width:380px"><select id="sc">${opts(C.categories,'','Все категории')}</select>
+    <label class="row small"><input type="checkbox" id="sz"> показывать нулевые</label></div><div id="slist"></div>`;
+  const draw = () => {
+    const s = st.q.toLowerCase();
+    const rows = C.products.filter(p => !p.archived && (st.zero || p.stock>0 || p.reserved>0) && (!st.cat || String(p.category_id)===st.cat) &&
+      (!s || [p.code,p.name,p.serial,p.location].some(v => (v||'').toLowerCase().includes(s))));
+    $('#slist').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Наименование</th><th>Категория</th><th>Место</th><th class="n">Остаток</th><th class="n">Резерв</th><th class="n">Доступно</th>
+      <th class="n">Себест. за шт</th><th class="n">Сумма</th><th class="n">Цена продажи</th><th class="n">Дней</th></tr></thead><tbody>
+      ${rows.map(p => `<tr class="click" data-id="${p.id}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td class="small">${esc(p.location)}</td>
+      <td class="n">${num(p.stock)}</td><td class="n">${p.reserved?num(p.reserved):''}</td><td class="n">${num(p.available)}</td><td class="n">${money(p.avg_cost)}</td>
+      <td class="n">${money(p.stock_value)}</td><td class="n">${p.sale_price?money(p.sale_price):''}</td>
+      <td class="n">${p.days_in_stock!=null ? (p.days_in_stock>=STALE_DAYS?`<span class="badge b-old">${p.days_in_stock}</span>`:p.days_in_stock):''}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="4">Итого</td><td class="n">${num(sum(rows,p=>p.stock))}</td><td class="n">${num(sum(rows,p=>p.reserved))}</td><td class="n">${num(sum(rows,p=>p.available))}</td><td></td>
+      <td class="n">${money(sum(rows,p=>p.stock_value))}</td><td></td><td></td></tr></tfoot></table></div>` : '<div class="panel empty">Склад пуст.</div>';
+    $$('#slist tr.click').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.id));
+  };
+  $('#sq').oninput = debounce(e => { st.q = e.target.value; draw(); }, 150);
+  $('#sc').onchange = e => { st.cat = e.target.value; draw(); };
+  $('#sz').onchange = e => { st.zero = e.target.checked; draw(); };
+  draw();
+}
+
+/* ---------- Документы: список ---------- */
+function docTable(rows, showType){
+  if (!rows.length) return '<div class="empty">Документов нет</div>';
+  return `<div class="tw"><table><thead><tr><th>№</th>${showType?'<th>Тип</th>':''}<th>Дата</th><th>Контрагент</th><th>Статус</th><th class="n">Позиций</th><th class="n">Сумма</th><th class="n">Оплачено</th><th>Создал</th><th>Комментарий</th></tr></thead><tbody>
+  ${rows.map(d => `<tr class="click" data-doc="${d.id}"><td>${esc(d.number)}</td>${showType?`<td>${T[d.type].one}</td>`:''}<td>${fdate(d.doc_date)}</td><td>${esc(d.counterparty)}</td><td>${badge(d.status,d.type)}</td>
+    <td class="n">${d.lines}</td><td class="n">${money(d.total)}</td><td class="n">${d.paid?money(Math.abs(d.paid)):''}</td><td class="small">${esc(d.created_by)}</td><td class="small muted">${esc(d.comment)}</td></tr>`).join('')}
+  </tbody>${showType?'':`<tfoot><tr><td colspan="5">Итого</td><td class="n">${sum(rows,d=>d.lines)}</td><td class="n">${money(sum(rows,d=>d.total))}</td><td class="n">${money(sum(rows,d=>Math.abs(d.paid)))}</td><td colspan="2"></td></tr></tfoot>`}</table></div>`;
+}
+function bindDocRows(){ $$('tr[data-doc]').forEach(tr => tr.onclick = () => go('#/doc/' + tr.dataset.doc)); }
+async function viewDocs(type, params){
+  if (!T[type]) return go('#/dashboard');
+  window.__lastDocType = type;
+  const from = params.get('from') || '', to = params.get('to') || '', status = params.get('status') || '', s = params.get('q') || '';
+  let qr = sb.from('v_doc_totals').select('*').eq('type',type).order('doc_date',{ascending:false}).order('id',{ascending:false}).limit(1000);
+  if (from) qr = qr.gte('doc_date',from); if (to) qr = qr.lte('doc_date',to); if (status) qr = qr.eq('status',status);
+  let rows = await q(qr);
+  if (s){ const l = s.toLowerCase(); rows = rows.filter(d => [d.number,d.counterparty,d.comment,d.created_by].some(v => (v||'').toLowerCase().includes(l))); }
+  const stOpts = type==='order' ? ORDER_STATUS : {draft:'Черновик',posted:'Проведён'};
+  $('#main').innerHTML = `
+  <div class="head"><h1>${T[type].many}</h1><div class="sp"></div><button class="primary" onclick="go('#/doc/new/${type}')">+ ${T[type].one}</button></div>
+  <div class="toolbar"><input id="fq" placeholder="Номер, контрагент, комментарий" value="${esc(s)}" style="max-width:300px">
+    <label class="small muted">с</label><input type="date" id="ff" value="${from}"><label class="small muted">по</label><input type="date" id="ft" value="${to}">
+    <select id="fs"><option value="">Все статусы</option>${Object.entries(stOpts).map(([k,v])=>`<option value="${k}" ${k===status?'selected':''}>${v}</option>`).join('')}</select>
+    <button id="fgo">Найти</button></div>
+  ${docTable(rows)}`;
+  bindDocRows();
+  const apply = () => go(`#/docs/${type}?q=${encodeURIComponent($('#fq').value)}&from=${$('#ff').value}&to=${$('#ft').value}&status=${$('#fs').value}`);
+  $('#fgo').onclick = apply; $('#fq').onkeydown = e => { if (e.key==='Enter') apply(); }; $('#fs').onchange = apply;
+}
+
+/* ---------- Документ: карточка ---------- */
+async function viewDoc(id, type){
+  const params = new URLSearchParams(location.hash.split('?')[1]||'');
+  await loadProducts();
+  let d, items = [], pays = [], children = [];
+  if (id){
+    d = await q(sb.from('documents').select('*').eq('id',id).single());
+    items = await q(sb.from('document_items').select('*').eq('document_id',id).order('id'));
+    pays = await q(sb.from('payments').select('*, accounts(name)').eq('document_id',id).order('pay_date'));
+    children = await q(sb.from('documents').select('id,type,number,status').eq('base_id',id));
+    type = d.type;
+  } else {
+    if (!T[type]) return go('#/dashboard');
+    d = { type, doc_date: today(), status:'draft', extra_cost:0, counterparty_id:null, channel_id:null, comment:'', base_id: params.get('base') ? +params.get('base') : null };
+    if (d.base_id){
+      const base = await q(sb.from('documents').select('*').eq('id',d.base_id).single());
+      const bi = await q(sb.from('document_items').select('*').eq('document_id',d.base_id));
+      d.counterparty_id = base.counterparty_id; d.channel_id = base.channel_id;
+      if (type==='sale' && base.type==='order') d.extra_cost = base.extra_cost;
+      items = bi.map(i => ({ product_id:i.product_id, qty:i.qty, price:i.price }));
+    }
+    if (params.get('product')){ const p = C.products.find(x => x.id === +params.get('product')); if (p) items = [{ product_id:p.id, qty:1, price: p.sale_price || 0 }]; }
+  }
+  window.__lastDocType = type;
+  const t = T[type];
+  const editable = d.status==='draft' || (type==='order' && d.status==='draft');
+  const orderLocked = type==='order' && d.status!=='draft';
+  const ro = !editable || orderLocked;
+  const prod = pid => C.products.find(p => p.id===pid) || {};
+  const total = () => sum(items, i => i.qty*i.price);
+
+  $('#main').innerHTML = `
+  <div class="head noprint"><a href="#/docs/${type}">← ${t.many}</a></div>
+  <div class="head"><h1>${t.one} ${d.number ? esc(d.number) : '(новый)'}</h1>${id ? badge(d.status,type) : ''}<div class="sp"></div><span id="dacts" class="row noprint"></span></div>
+  <div class="panel" id="dhead"><div class="grid g4">
+    <div class="field"><label class="f">Дата</label><input type="date" name="doc_date" value="${d.doc_date}" ${ro?'disabled':''}></div>
+    ${t.cp ? `<div class="field" style="grid-column:span 2"><label class="f">${t.cp}</label><div class="row" style="flex-wrap:nowrap">
+      <select name="counterparty_id" ${ro?'disabled':''}>${opts(C.cps.filter(c => c.kind==='both' || c.kind===(['purchase','supplier_return'].includes(type)?'supplier':'customer') || c.id===d.counterparty_id), d.counterparty_id, '— не указан —')}</select>
+      ${ro?'':'<button id="newcp" title="Новый контрагент">+</button>'}</div></div>` : '<div style="grid-column:span 2"></div>'}
+    ${['sale','order','customer_return'].includes(type) ? `<div class="field"><label class="f">Канал продажи</label><select name="channel_id" ${ro?'disabled':''}>${opts(C.channels,d.channel_id,'—')}</select></div>` : '<div></div>'}
+    ${t.extra ? `<div class="field" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}></div>` : ''}
+    <div class="field" style="grid-column:span ${t.extra?2:4}"><label class="f">Комментарий</label><input name="comment" value="${esc(d.comment)}" ${ro?'disabled':''}></div>
+  </div>
+  ${d.base_id ? `<p class="small muted" style="margin:10px 0 0">Создан на основании: <a href="#/doc/${d.base_id}">документа</a></p>` : ''}
+  ${children.length ? `<p class="small muted" style="margin:6px 0 0">Связанные: ${children.map(c => `<a href="#/doc/${c.id}">${T[c.type].one} ${esc(c.number)}</a>`).join(', ')}</p>` : ''}
+  ${id ? `<p class="small faint" style="margin:6px 0 0">Создал: ${esc(d.created_by)}, ${fdate(d.created_at)}${d.posted_by ? ` · провёл: ${esc(d.posted_by)}` : ''}</p>` : ''}
+  </div>
+  <div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Позиции</h2><div style="flex:1"></div>
+    ${ro ? '' : `<div class="picker" style="width:min(460px,100%)"><input id="padd" placeholder="Добавить товар: код, название, серийный номер"><div class="dd hidden" id="pdd"></div></div>
+    ${['purchase','enter'].includes(type) ? '<button id="pnew">+ Новый товар</button>' : ''}`}</div>
+    <div class="tw items"><table><thead><tr><th>Код</th><th>Наименование</th><th class="n">Доступно</th><th class="n" style="width:90px">Кол-во</th><th class="n" style="width:140px">${t.price}</th><th class="n">Сумма</th>
+      ${d.status==='posted' ? '<th class="n">Себест.</th>' : ''}${d.status==='posted' && ['sale'].includes(type) ? '<th class="n">Прибыль</th>':''}<th class="noprint"></th></tr></thead><tbody id="ibody"></tbody>
+      <tfoot><tr><td colspan="3">Итого</td><td class="n" id="tq"></td><td></td><td class="n" id="ts"></td>${d.status==='posted'?'<td></td>':''}${d.status==='posted' && type==='sale'?'<td class="n" id="tp"></td>':''}<td class="noprint"></td></tr></tfoot></table></div>
+  </div>
+  ${id && type!=='order' && type!=='enter' && type!=='writeoff' ? `<div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Оплаты</h2><div style="flex:1"></div><button id="addpay" class="noprint">+ ${['sale','supplier_return'].includes(type)?'Принять оплату':'Оплатить'}</button></div>
+    ${pays.length ? `<div class="tw"><table><thead><tr><th>Дата</th><th>Счёт</th><th class="n">Сумма</th><th>Внёс</th></tr></thead><tbody>
+    ${pays.map(p => `<tr><td>${fdate(p.pay_date)}</td><td>${esc(p.accounts?.name)}</td><td class="n">${money(p.amount)}</td><td class="small">${esc(p.created_by)}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="small muted">Оплат нет.</div>'}</div>` : ''}
+  ${!id && ['sale','purchase','customer_return','supplier_return'].includes(type) ? `<div class="panel noprint" id="paynow"><label class="row"><input type="checkbox" id="pn"> ${['sale','supplier_return'].includes(type)?'Оплата получена сразу':'Оплачено сразу'}</label>
+    <div class="row hidden" id="pnacc" style="margin-top:8px"><span class="small muted">на счёт</span><select id="pnaccsel" style="width:auto">${opts(C.accounts,C.accounts[0]?.id)}</select></div></div>` : ''}`;
+
+  const body = $('#ibody');
+  const drawItems = () => {
+    body.innerHTML = items.length ? items.map((i, k) => { const p = prod(i.product_id);
+      const pr = i.unit_cost!=null ? i.qty*i.price - i.qty*i.unit_cost - (+i.extra_share||0) : null;
+      return `<tr><td>${esc(p.code)}</td><td><a href="#/product/${p.id}">${esc(p.name)}</a>${p.serial?`<div class="small faint">S/N ${esc(p.serial)}</div>`:''}</td>
+      <td class="n faint">${num(p.available)}</td>
+      <td class="n">${ro ? num(i.qty) : `<input type="number" step="1" min="1" data-k="${k}" data-f="qty" value="${i.qty}" style="text-align:right">`}</td>
+      <td class="n">${ro ? money(i.price) : `<input type="number" step="1" data-k="${k}" data-f="price" value="${i.price}" style="text-align:right">`}</td>
+      <td class="n" data-sum="${k}">${money(i.qty*i.price)}</td>
+      ${d.status==='posted' ? `<td class="n">${i.unit_cost!=null?money(i.unit_cost):''}</td>` : ''}
+      ${d.status==='posted' && type==='sale' ? `<td class="n ${pr>=0?'pos':'neg'}">${money(pr)}</td>` : ''}
+      <td class="noprint">${ro?'':`<button class="link" data-del="${k}" title="Убрать">✕</button>`}</td></tr>`; }).join('')
+      : `<tr><td colspan="8" class="empty">${ro ? 'Позиций нет' : 'Добавьте товары через поле поиска выше'}</td></tr>`;
+    $('#tq').textContent = num(sum(items,i=>i.qty)); $('#ts').textContent = money(total());
+    if ($('#tp')) $('#tp').textContent = money(sum(items, i => i.qty*i.price - i.qty*(i.unit_cost||0) - (+i.extra_share||0)));
+    $$('input[data-k]', body).forEach(inp => inp.oninput = () => { const it = items[+inp.dataset.k]; it[inp.dataset.f] = +inp.value || 0;
+      $(`[data-sum="${inp.dataset.k}"]`).textContent = money(it.qty*it.price); $('#tq').textContent = num(sum(items,i=>i.qty)); $('#ts').textContent = money(total()); dirty = true; });
+    $$('[data-del]', body).forEach(b => b.onclick = () => { items.splice(+b.dataset.del,1); dirty = true; drawItems(); });
+  };
+  let dirty = !id && items.length > 0;
+  drawItems();
+
+  const addProduct = p => {
+    const ex = items.find(i => i.product_id===p.id);
+    const defPrice = ['sale','order'].includes(type) ? (p.sale_price||0) : ['writeoff','supplier_return','enter'].includes(type) ? Math.round(p.avg_cost||0) : 0;
+    if (ex) ex.qty += 1; else items.push({ product_id:p.id, qty:1, price:defPrice });
+    dirty = true; drawItems();
+  };
+  if (!ro){
+    const inp = $('#padd'), dd = $('#pdd'); let act = 0, found = [];
+    const show = () => {
+      const s = inp.value.trim().toLowerCase();
+      if (!s){ dd.classList.add('hidden'); return; }
+      const outgoing = T[type].sign < 0 || type==='order';
+      found = C.products.filter(p => !p.archived && [p.code,p.name,p.serial,p.barcode].some(v => (v||'').toLowerCase().includes(s))).slice(0,30);
+      dd.innerHTML = found.length ? found.map((p,k) => `<div data-k="${k}" class="${k===act?'act':''}"><b>${esc(p.code)}</b> ${esc(p.name)} <span class="small faint">${p.serial?'S/N '+esc(p.serial)+' · ':''}${outgoing ? 'доступно '+num(p.available) : 'остаток '+num(p.stock)}</span></div>`).join('')
+        : `<div class="faint">Ничего не найдено${['purchase','enter'].includes(type)?'. Нажмите «+ Новый товар»':''}</div>`;
+      dd.classList.remove('hidden');
+      $$('[data-k]', dd).forEach(el => el.onmousedown = e => { e.preventDefault(); addProduct(found[+el.dataset.k]); inp.value=''; dd.classList.add('hidden'); });
+    };
+    inp.oninput = () => { act = 0; show(); };
+    inp.onkeydown = e => {
+      if (e.key==='ArrowDown'){ act = Math.min(act+1, found.length-1); show(); e.preventDefault(); }
+      if (e.key==='ArrowUp'){ act = Math.max(act-1, 0); show(); e.preventDefault(); }
+      if (e.key==='Enter' && found[act]){ addProduct(found[act]); inp.value=''; dd.classList.add('hidden'); }
+    };
+    inp.onblur = () => setTimeout(() => dd.classList.add('hidden'), 150);
+    if ($('#pnew')) $('#pnew').onclick = () => modal(`<h2>Новый товар</h2><div id="npf">${productForm({})}</div>
+      <div class="acts"><button data-c>Отмена</button><button class="primary" data-s>Создать и добавить</button></div>`, (m, close) => {
+        $('[data-c]',m).onclick = close;
+        $('[data-s]',m).onclick = async () => { const o = readForm($('#npf',m)); if (!o.name){ toast('Введите наименование',true); return; }
+          const r = await q(sb.from('products').insert(o).select().single()); await loadProducts(); addProduct(C.products.find(p=>p.id===r.id) || r); close(); };
+      });
+    if ($('#newcp')) $('#newcp').onclick = () => cpModal(['purchase','supplier_return'].includes(type)?'supplier':'customer', cp => {
+      const sel = $('[name=counterparty_id]'); sel.insertAdjacentHTML('beforeend', `<option value="${cp.id}">${esc(cp.name)}</option>`); sel.value = cp.id; });
+    $$('#dhead [name]').forEach(i => i.addEventListener('input', () => dirty = true));
+    if ($('#pn')) $('#pn').onchange = e => $('#pnacc').classList.toggle('hidden', !e.target.checked);
+  }
+
+  const save = async () => {
+    const h = readForm($('#dhead'));
+    const rec = { type, doc_date: h.doc_date || today(), counterparty_id: h.counterparty_id ?? null, channel_id: h.channel_id ?? null,
+      extra_cost: h.extra_cost || 0, comment: h.comment, base_id: d.base_id };
+    if (!items.length){ toast('Добавьте хотя бы одну позицию', true); throw new Error('no items'); }
+    if (items.some(i => !(i.qty > 0))){ toast('Количество должно быть больше нуля', true); throw new Error('qty'); }
+    let docId = id;
+    if (id) await q(sb.from('documents').update(rec).eq('id', id));
+    else { const r = await q(sb.from('documents').insert(rec).select().single()); docId = r.id; }
+    await q(sb.from('document_items').delete().eq('document_id', docId));
+    await q(sb.from('document_items').insert(items.map(i => ({ document_id:docId, product_id:i.product_id, qty:i.qty, price:i.price||0 }))));
+    dirty = false;
+    return docId;
+  };
+  const payNow = async (docId) => {
+    if (!$('#pn') || !$('#pn').checked) return;
+    const inDir = ['sale','supplier_return'].includes(type);
+    const itemName = {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю'}[type];
+    const amount = total(); if (!(amount > 0)) return;
+    await q(sb.from('payments').insert({ pay_date: $('[name=doc_date]').value || today(), direction: inDir?'in':'out', amount,
+      account_id: +$('#pnaccsel').value, item_id: C.items.find(x => x.name===itemName)?.id, counterparty_id: +$('[name=counterparty_id]').value || null, document_id: docId }));
+  };
+
+  const acts = $('#dacts');
+  const btn = (txt, cls, fn) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls;
+    b.onclick = async () => { b.disabled = true; try { await fn(); } catch(e){ console.error(e); } finally { b.disabled = false; } }; acts.appendChild(b); };
+  if (type==='order'){
+    if (d.status==='draft'){
+      btn('Сохранить', '', async () => { const nid = await save(); toast('Сохранено'); id ? route() : go('#/doc/'+nid); });
+      btn('В резерв', 'primary', async () => { const nid = await save();
+        for (const i of items){ const p = prod(i.product_id); if (p.available < i.qty){ toast(`Недостаточно доступного остатка: ${p.name}`, true); return; } }
+        await q(sb.from('documents').update({status:'reserved'}).eq('id',nid)); toast('Товар зарезервирован'); id ? route() : go('#/doc/'+nid); });
+    }
+    if (d.status==='reserved'){
+      btn('Снять резерв', '', async () => { await q(sb.from('documents').update({status:'draft'}).eq('id',id)); route(); });
+      btn('Отгрузить', 'primary', async () => go(`#/doc/new/sale?base=${id}`));
+    }
+    if (['draft','reserved'].includes(d.status) && id) btn('Отменить заказ', 'danger', async () => { if (await confirmBox('Отменить заказ?')){ await q(sb.from('documents').update({status:'cancelled'}).eq('id',id)); route(); } });
+    if (d.status==='cancelled') btn('Восстановить', '', async () => { await q(sb.from('documents').update({status:'draft'}).eq('id',id)); route(); });
+  } else if (d.status==='draft'){
+    btn('Сохранить', '', async () => { const nid = await save(); toast('Сохранено как черновик'); id ? route() : go('#/doc/'+nid); });
+    btn('Провести', 'primary', async () => { const nid = await save();
+      const { error } = await sb.rpc('post_document', { p_doc:nid });
+      if (error){ toast(error.message, true); if (!id) go('#/doc/'+nid); return; }
+      await payNow(nid); toast('Документ проведён'); id ? route() : go('#/doc/'+nid); });
+  } else if (d.status==='posted'){
+    btn('Отменить проведение', '', async () => { if (!(await confirmBox('Отменить проведение? Остатки и прибыль пересчитаются.'))) return;
+      const { error } = await sb.rpc('unpost_document', { p_doc:id }); if (error){ toast(error.message,true); return; } toast('Проведение отменено'); route(); });
+    if (type==='sale') btn('Возврат', '', async () => go(`#/doc/new/customer_return?base=${id}`));
+    if (type==='purchase') btn('Возврат поставщику', '', async () => go(`#/doc/new/supplier_return?base=${id}`));
+  }
+  btn('Печать', '', async () => print());
+  if (id && d.status!=='posted') btn('Удалить', 'danger', async () => { if (!(await confirmBox('Удалить документ?'))) return;
+    await q(sb.from('payments').update({document_id:null}).eq('document_id',id));
+    await q(sb.from('documents').delete().eq('id',id)); toast('Удалено'); go('#/docs/'+type); });
+
+  if ($('#addpay')) $('#addpay').onclick = () => payModal({ direction: ['sale','supplier_return'].includes(type)?'in':'out',
+    amount: Math.max(0, total() - Math.abs(sum(pays,p=>p.amount))), counterparty_id: d.counterparty_id, document_id: id,
+    itemName: {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю'}[type] }, route);
+  window.onbeforeunload = () => dirty ? true : null;
+}
+
+/* ---------- Контрагенты ---------- */
+function cpModal(kind, cb, cp={}){
+  modal(`<h2>${cp.id?'Контрагент':'Новый контрагент'}</h2><div id="cpf" class="grid g2">
+    <div class="field" style="grid-column:1/-1"><label class="f">Название или имя *</label><input name="name" value="${esc(cp.name)}"></div>
+    <div class="field"><label class="f">Тип</label><select name="kind">${Object.entries(KIND).map(([k,v]) => `<option value="${k}" ${k===(cp.kind||kind||'both')?'selected':''}>${v}</option>`).join('')}</select></div>
+    <div class="field"><label class="f">Телефон</label><input name="phone" value="${esc(cp.phone)}"></div>
+    <div class="field" style="grid-column:1/-1"><label class="f">Контакт (OLX, Instagram, Telegram)</label><input name="contact" value="${esc(cp.contact)}"></div>
+    <div class="field" style="grid-column:1/-1"><label class="f">Заметка</label><textarea name="note">${esc(cp.note)}</textarea></div></div>
+    <div class="acts"><button data-c>Отмена</button><button class="primary" data-s>Сохранить</button></div>`, (m, close) => {
+      $('[data-c]',m).onclick = close; setTimeout(() => $('[name=name]',m).focus(), 50);
+      $('[data-s]',m).onclick = async () => { const o = readForm($('#cpf',m)); if (!o.name){ toast('Введите название',true); return; }
+        const r = cp.id ? await q(sb.from('counterparties').update(o).eq('id',cp.id).select().single()) : await q(sb.from('counterparties').insert(o).select().single());
+        await loadRefs(); close(); cb && cb(r); };
+    });
+}
+async function viewCounterparties(){
+  const rows = await q(sb.from('v_counterparty_balances').select('*').order('name'));
+  $('#main').innerHTML = `<div class="head"><h1>Контрагенты</h1><div class="sp"></div><button class="primary" id="cpadd">+ Контрагент</button></div>
+  <div class="toolbar"><input id="cq" placeholder="Имя, телефон, контакт" style="max-width:340px"><select id="ck"><option value="">Все</option>${Object.entries(KIND).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div><div id="clist"></div>`;
+  const draw = () => { const s = $('#cq').value.toLowerCase(), k = $('#ck').value;
+    const r = rows.filter(c => (!k || c.kind===k || c.kind==='both') && (!s || [c.name,c.phone,c.contact].some(v => (v||'').toLowerCase().includes(s))));
+    $('#clist').innerHTML = r.length ? `<div class="tw"><table><thead><tr><th>Название</th><th>Тип</th><th>Телефон</th><th>Контакт</th><th class="n">Купили у нас</th><th class="n">Продали нам</th><th class="n">Баланс</th></tr></thead><tbody>
+      ${r.map(c => `<tr class="click" data-id="${c.id}"><td>${esc(c.name)}</td><td class="small">${KIND[c.kind]}</td><td>${esc(c.phone)}</td><td class="small">${esc(c.contact)}</td>
+      <td class="n">${money(c.sold)}</td><td class="n">${money(c.bought)}</td><td class="n ${c.balance>0?'pos':c.balance<0?'neg':''}">${c.balance ? money(c.balance) : '—'}</td></tr>`).join('')}</tbody></table></div>
+      <p class="small muted">Баланс: плюс означает, что контрагент должен нам, минус означает, что мы должны ему.</p>` : '<div class="panel empty">Контрагентов нет</div>';
+    $$('#clist tr.click').forEach(tr => tr.onclick = () => go('#/counterparty/' + tr.dataset.id)); };
+  $('#cq').oninput = debounce(draw,150); $('#ck').onchange = draw; draw();
+  $('#cpadd').onclick = () => cpModal('both', r => go('#/counterparty/' + r.id));
+}
+async function viewCounterparty(id){
+  if (id==='new') return cpModal('both', r => go('#/counterparty/' + r.id));
+  const [c, docs, pays] = await Promise.all([
+    q(sb.from('v_counterparty_balances').select('*').eq('id',id).single()),
+    q(sb.from('v_doc_totals').select('*').eq('counterparty_id',id).order('doc_date',{ascending:false})),
+    q(sb.from('payments').select('*, accounts(name), expense_items(name)').eq('counterparty_id',id).order('pay_date',{ascending:false})),
+  ]);
+  $('#main').innerHTML = `<div class="head"><a href="#/counterparties">← Контрагенты</a></div>
+  <div class="head"><h1>${esc(c.name)}</h1><span class="badge b-draft">${KIND[c.kind]}</span><div class="sp"></div><button id="cpe">Изменить</button><button class="danger" id="cpd">Удалить</button></div>
+  <div class="cards"><div class="card"><div class="l">Купил у нас</div><div class="v">${money(c.sold)}</div></div><div class="card"><div class="l">Продал нам</div><div class="v">${money(c.bought)}</div></div>
+    <div class="card"><div class="l">${c.balance>=0?'Должен нам':'Мы должны'}</div><div class="v ${c.balance>0?'green':c.balance<0?'red':''}">${money(Math.abs(c.balance))}</div></div></div>
+  <div class="panel"><div class="kv"><div>Телефон</div><div>${esc(c.phone)||'—'}</div><div>Контакт</div><div>${esc(c.contact)||'—'}</div><div>Заметка</div><div>${esc(c.note)||'—'}</div></div></div>
+  <div class="panel"><h2>Документы</h2>${docTable(docs, true)}</div>
+  <div class="panel"><h2>Платежи</h2>${payTable(pays)}</div>`;
+  bindDocRows();
+  $('#cpe').onclick = () => cpModal(c.kind, () => route(), c);
+  $('#cpd').onclick = async () => { if (docs.length || pays.length){ toast('У контрагента есть документы или платежи, удалить нельзя', true); return; }
+    if (await confirmBox('Удалить контрагента?')){ await q(sb.from('counterparties').delete().eq('id',id)); await loadRefs(); go('#/counterparties'); } };
+}
+
+/* ---------- Деньги ---------- */
+function payTable(rows){
+  if (!rows.length) return '<div class="empty">Платежей нет</div>';
+  return `<div class="tw"><table><thead><tr><th>Дата</th><th>Тип</th><th>Статья</th><th>Счёт</th><th>Контрагент</th><th>Документ</th><th class="n">Сумма</th><th>Внёс</th><th>Комментарий</th><th class="noprint"></th></tr></thead><tbody>
+  ${rows.map(p => `<tr><td>${fdate(p.pay_date)}</td><td>${p.direction==='in'?'<span class="pos">Приход</span>':'<span class="neg">Расход</span>'}</td><td>${esc(p.expense_items?.name)}</td><td>${esc(p.accounts?.name)}</td>
+    <td>${esc(p.counterparties?.name)}</td><td>${p.documents ? `<a href="#/doc/${p.document_id}">${esc(p.documents.number)}</a>` : ''}</td>
+    <td class="n ${p.direction==='in'?'pos':'neg'}">${p.direction==='in'?'+':'−'}${money(p.amount)}</td><td class="small">${esc(p.created_by)}</td><td class="small muted">${esc(p.comment)}</td>
+    <td class="noprint"><button class="link" data-pdel="${p.id}" title="Удалить">✕</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+function bindPayDel(){ $$('[data-pdel]').forEach(b => b.onclick = async () => { if (await confirmBox('Удалить платёж?')){ await q(sb.from('payments').delete().eq('id',b.dataset.pdel)); toast('Удалено'); route(); } }); }
+function payModal(pre={}, cb){
+  const dir = pre.direction || 'out';
+  modal(`<h2>${dir==='in'?'Приход денег':'Расход денег'}</h2><div id="pyf" class="grid g2">
+    <div class="field"><label class="f">Тип</label><select name="direction"><option value="in" ${dir==='in'?'selected':''}>Приход</option><option value="out" ${dir==='out'?'selected':''}>Расход</option></select></div>
+    <div class="field"><label class="f">Дата</label><input type="date" name="pay_date" value="${today()}"></div>
+    <div class="field"><label class="f">Сумма, ₸ *</label><input type="number" step="1" name="amount" value="${pre.amount ? Math.round(pre.amount) : ''}"></div>
+    <div class="field"><label class="f">Счёт</label><select name="account_id">${opts(C.accounts, C.accounts[0]?.id)}</select></div>
+    <div class="field"><label class="f">Статья</label><select name="item_id" id="pyitem"></select></div>
+    <div class="field"><label class="f">Контрагент</label><select name="counterparty_id">${opts(C.cps, pre.counterparty_id, '—')}</select></div>
+    <div class="field" style="grid-column:1/-1"><label class="f">Комментарий</label><input name="comment"></div></div>
+    <div class="acts"><button data-c>Отмена</button><button class="primary" data-s>Сохранить</button></div>`, (m, close) => {
+      const fill = () => { const d = $('[name=direction]',m).value; const its = C.items.filter(i => i.kind===(d==='in'?'income':'expense'));
+        $('#pyitem',m).innerHTML = opts(its, (its.find(i=>i.name===pre.itemName)||its[0])?.id); };
+      fill(); $('[name=direction]',m).onchange = fill; $('[data-c]',m).onclick = close;
+      $('[data-s]',m).onclick = async () => { const o = readForm($('#pyf',m)); if (!(o.amount>0)){ toast('Введите сумму',true); return; }
+        if (pre.document_id) o.document_id = pre.document_id;
+        await q(sb.from('payments').insert(o)); toast('Платёж сохранён'); close(); cb && cb(); };
+    });
+}
+async function viewPayments(_, params){
+  const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd(), dir = params.get('dir') || '', acc = params.get('acc') || '';
+  let qr = sb.from('payments').select('*, accounts(name), expense_items(name), counterparties(name), documents(number,type)').gte('pay_date',from).lte('pay_date',to).order('pay_date',{ascending:false}).order('id',{ascending:false});
+  if (dir) qr = qr.eq('direction',dir); if (acc) qr = qr.eq('account_id',acc);
+  const rows = await q(qr);
+  const inS = sum(rows.filter(p=>p.direction==='in'),p=>p.amount), outS = sum(rows.filter(p=>p.direction==='out'),p=>p.amount);
+  $('#main').innerHTML = `<div class="head"><h1>Платежи</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
+  <div class="toolbar"><label class="small muted">с</label><input type="date" id="ff" value="${from}"><label class="small muted">по</label><input type="date" id="ft" value="${to}">
+    <select id="fd"><option value="">Приход и расход</option><option value="in" ${dir==='in'?'selected':''}>Приход</option><option value="out" ${dir==='out'?'selected':''}>Расход</option></select>
+    <select id="fa">${opts(C.accounts, acc, 'Все счета')}</select><button id="fgo">Показать</button></div>
+  <div class="cards"><div class="card"><div class="l">Приход</div><div class="v green">${money(inS)}</div></div><div class="card"><div class="l">Расход</div><div class="v red">${money(outS)}</div></div><div class="card"><div class="l">Разница</div><div class="v">${money(inS-outS)}</div></div></div>
+  ${payTable(rows)}`;
+  bindPayDel();
+  const apply = () => go(`#/payments?from=${$('#ff').value}&to=${$('#ft').value}&dir=${$('#fd').value}&acc=${$('#fa').value}`);
+  $('#fgo').onclick = apply; $('#fd').onchange = apply; $('#fa').onchange = apply;
+}
+async function viewMoney(){
+  const [bal, pays] = await Promise.all([q(sb.from('v_account_balances').select('*').order('sort')),
+    q(sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')))]);
+  const months = {}; pays.forEach(p => { const k = p.pay_date.slice(0,7); months[k] = months[k] || {in:0,out:0}; months[k][p.direction] += +p.amount; });
+  const byItem = {}; pays.filter(p=>p.direction==='out').forEach(p => byItem[p.expense_items?.name||'Без статьи'] = (byItem[p.expense_items?.name||'Без статьи']||0) + +p.amount);
+  $('#main').innerHTML = `<div class="head"><h1>Остатки денег</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
+  <div class="cards">${bal.map(b => `<div class="card"><div class="l">${esc(b.name)}</div><div class="v ${b.balance<0?'red':''}">${money(b.balance)}</div><div class="s">приход ${money(b.total_in)} · расход ${money(b.total_out)}</div></div>`).join('')}
+    <div class="card"><div class="l">Всего</div><div class="v">${money(sum(bal,b=>b.balance))}</div></div></div>
+  <div class="grid g2"><div class="panel"><h2>Движение денег по месяцам, ${new Date().getFullYear()}</h2>
+    <div class="tw"><table><thead><tr><th>Месяц</th><th class="n">Приход</th><th class="n">Расход</th><th class="n">Разница</th></tr></thead><tbody>
+    ${Object.keys(months).sort().map(k => `<tr><td>${k.slice(5)}.${k.slice(0,4)}</td><td class="n pos">${money(months[k].in)}</td><td class="n neg">${money(months[k].out)}</td><td class="n">${money(months[k].in-months[k].out)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Нет платежей</td></tr>'}
+    </tbody></table></div></div>
+  <div class="panel"><h2>Расходы по статьям с начала года</h2><div class="tw"><table><tbody>
+    ${Object.entries(byItem).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('') || '<tr><td class="empty">Нет расходов</td></tr>'}</tbody></table></div></div></div>
+  <p class="small muted">Начальный остаток денег на счёте вносится платежом «Приход» со статьёй «Вложение учредителя» или «Прочий приход».</p>`;
+}
+async function viewSettlements(){
+  const rows = (await q(sb.from('v_counterparty_balances').select('*').order('name'))).filter(r => Math.abs(r.balance) > 0.5);
+  $('#main').innerHTML = `<div class="head"><h1>Взаиморасчёты</h1></div>
+  <div class="cards"><div class="card"><div class="l">Нам должны</div><div class="v green">${money(sum(rows.filter(r=>r.balance>0),r=>r.balance))}</div></div>
+  <div class="card"><div class="l">Мы должны</div><div class="v red">${money(-sum(rows.filter(r=>r.balance<0),r=>r.balance))}</div></div></div>
+  ${rows.length ? `<div class="tw"><table><thead><tr><th>Контрагент</th><th>Телефон</th><th class="n">Должен нам</th><th class="n">Мы должны</th><th class="noprint"></th></tr></thead><tbody>
+  ${rows.map(r => `<tr><td><a href="#/counterparty/${r.id}">${esc(r.name)}</a></td><td>${esc(r.phone)}</td><td class="n pos">${r.balance>0?money(r.balance):''}</td><td class="n neg">${r.balance<0?money(-r.balance):''}</td>
+    <td class="noprint"><button class="link" data-cp="${r.id}" data-b="${r.balance}">${r.balance>0?'Принять оплату':'Оплатить'}</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="panel empty">Долгов нет: все отгрузки и приёмки оплачены.</div>'}`;
+  $$('[data-cp]').forEach(b => b.onclick = () => { const bal = +b.dataset.b;
+    payModal({ direction: bal>0?'in':'out', amount: Math.abs(bal), counterparty_id: +b.dataset.cp, itemName: bal>0?'Оплата от покупателя':'Оплата поставщику' }, route); });
+}
+
+/* ---------- Инвентаризация ---------- */
+async function viewInventory(){
+  await loadProducts();
+  $('#main').innerHTML = `<div class="head"><h1>Инвентаризация</h1></div>
+  <div class="panel small muted">Пересчитайте товар на полках и впишите фактическое количество. Расхождения оформятся автоматически: недостача списанием, излишек оприходованием.</div>
+  <div class="toolbar"><select id="ic">${opts(C.categories,'','Все категории')}</select><input id="iq" placeholder="Поиск" style="max-width:300px">
+    <label class="row small"><input type="checkbox" id="iz"> включая нулевые остатки</label><div style="flex:1"></div><button class="primary" id="igo">Провести инвентаризацию</button></div><div id="ilist"></div>`;
+  const fact = {};
+  const draw = () => { const cat = $('#ic').value, s = $('#iq').value.toLowerCase(), z = $('#iz').checked;
+    const rows = C.products.filter(p => !p.archived && (z || p.stock>0) && (!cat || String(p.category_id)===cat) && (!s || [p.code,p.name,p.serial,p.location].some(v=>(v||'').toLowerCase().includes(s))));
+    $('#ilist').innerHTML = rows.length ? `<div class="tw items"><table><thead><tr><th>Код</th><th>Наименование</th><th>Место</th><th class="n">По учёту</th><th class="n" style="width:110px">Факт</th><th class="n">Разница</th></tr></thead><tbody>
+      ${rows.map(p => { const f = fact[p.id]; const diff = f==null ? null : f - p.stock; return `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}<div class="small faint">${esc(p.serial)}</div></td><td class="small">${esc(p.location)}</td>
+      <td class="n">${num(p.stock)}</td><td class="n"><input type="number" min="0" step="1" data-id="${p.id}" value="${f ?? ''}" placeholder="${num(p.stock)}" style="text-align:right"></td>
+      <td class="n ${diff>0?'pos':diff<0?'neg':''}" data-d="${p.id}">${diff ? (diff>0?'+':'')+num(diff) : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="panel empty">Нет товаров</div>';
+    $$('#ilist input').forEach(i => i.oninput = () => { const p = C.products.find(x=>x.id===+i.dataset.id); if (i.value===''){ delete fact[p.id]; } else fact[p.id] = +i.value;
+      const diff = fact[p.id]==null ? 0 : fact[p.id]-p.stock; const c = $(`[data-d="${p.id}"]`); c.textContent = diff ? (diff>0?'+':'')+num(diff) : ''; c.className = 'n ' + (diff>0?'pos':diff<0?'neg':''); });
+  };
+  ['#ic','#iz'].forEach(s => $(s).onchange = draw); $('#iq').oninput = debounce(draw,150); draw();
+  $('#igo').onclick = async () => {
+    const diffs = Object.entries(fact).map(([id,f]) => { const p = C.products.find(x=>x.id===+id); return { p, d: f - p.stock }; }).filter(x => x.d !== 0);
+    if (!diffs.length){ toast('Расхождений нет. Впишите фактическое количество там, где оно отличается.'); return; }
+    if (!(await confirmBox(`Найдено расхождений: ${diffs.length}. Провести?`))) return;
+    const comment = 'Инвентаризация ' + fdate(today());
+    for (const [type, list] of [['writeoff', diffs.filter(x=>x.d<0)], ['enter', diffs.filter(x=>x.d>0)]]){
+      if (!list.length) continue;
+      const doc = await q(sb.from('documents').insert({ type, doc_date: today(), comment }).select().single());
+      await q(sb.from('document_items').insert(list.map(x => ({ document_id:doc.id, product_id:x.p.id, qty:Math.abs(x.d), price: Math.round(x.p.avg_cost||0) }))));
+      const { error } = await sb.rpc('post_document', { p_doc: doc.id }); if (error){ toast(error.message,true); return; }
+    }
+    toast('Инвентаризация проведена'); route();
+  };
+}
+
+/* ---------- Отчёты ---------- */
+async function viewProfit(_, params){
+  const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd(), by = params.get('by') || 'product';
+  const lines = await q(sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to));
+  const dims = { product:['Товар', x => (x.code?x.code+' ':'')+x.product], category:['Категория', x => x.category||'Без категории'], channel:['Канал продажи', x => x.channel||'Не указан'],
+    counterparty:['Покупатель', x => x.counterparty||'Не указан'], month:['Месяц', x => x.doc_date.slice(0,7)], day:['День', x => x.doc_date], created_by:['Сотрудник', x => x.created_by] };
+  const g = {}; lines.forEach(x => { const k = dims[by][1](x); g[k] = g[k] || {qty:0,revenue:0,cost:0,expense:0,profit:0};
+    for (const f of ['qty','revenue','cost','expense','profit']) g[k][f] += +x[f]; });
+  const keys = Object.keys(g).sort((a,b) => by==='month'||by==='day' ? a.localeCompare(b) : g[b].profit - g[a].profit);
+  const tot = {qty:sum(lines,x=>x.qty),revenue:sum(lines,x=>x.revenue),cost:sum(lines,x=>x.cost),expense:sum(lines,x=>x.expense),profit:sum(lines,x=>x.profit)};
+  $('#main').innerHTML = `<div class="head"><h1>Прибыльность</h1><div class="sp"></div><button onclick="print()">Печать</button></div>
+  <div class="toolbar"><label class="small muted">с</label><input type="date" id="ff" value="${from}"><label class="small muted">по</label><input type="date" id="ft" value="${to}">
+    <select id="fb">${Object.entries(dims).map(([k,v]) => `<option value="${k}" ${k===by?'selected':''}>по: ${v[0].toLowerCase()}</option>`).join('')}</select><button id="fgo">Показать</button></div>
+  <div class="cards"><div class="card"><div class="l">Выручка</div><div class="v">${money(tot.revenue)}</div></div><div class="card"><div class="l">Себестоимость</div><div class="v">${money(tot.cost)}</div></div>
+  <div class="card"><div class="l">Расходы при продаже</div><div class="v">${money(tot.expense)}</div></div><div class="card"><div class="l">Валовая прибыль</div><div class="v ${tot.profit>=0?'green':'red'}">${money(tot.profit)}</div><div class="s">маржа ${pct(tot.revenue?tot.profit/tot.revenue:0)}</div></div></div>
+  ${keys.length ? `<div class="tw"><table><thead><tr><th>${dims[by][0]}</th><th class="n">Кол-во</th><th class="n">Выручка</th><th class="n">Себестоимость</th><th class="n">Расходы</th><th class="n">Прибыль</th><th class="n">Маржа</th></tr></thead><tbody>
+  ${keys.map(k => { const r = g[k]; return `<tr><td>${esc(by==='day'?fdate(k):by==='month'?k.slice(5)+'.'+k.slice(0,4):k)}</td><td class="n">${num(r.qty)}</td><td class="n">${money(r.revenue)}</td><td class="n">${money(r.cost)}</td><td class="n">${money(r.expense)}</td>
+    <td class="n ${r.profit>=0?'pos':'neg'}">${money(r.profit)}</td><td class="n">${pct(r.revenue?r.profit/r.revenue:0)}</td></tr>`; }).join('')}</tbody>
+  <tfoot><tr><td>Итого</td><td class="n">${num(tot.qty)}</td><td class="n">${money(tot.revenue)}</td><td class="n">${money(tot.cost)}</td><td class="n">${money(tot.expense)}</td><td class="n">${money(tot.profit)}</td><td class="n">${pct(tot.revenue?tot.profit/tot.revenue:0)}</td></tr></tfoot></table></div>`
+  : '<div class="panel empty">За период продаж нет</div>'}`;
+  const apply = () => go(`#/reports/profit?from=${$('#ff').value}&to=${$('#ft').value}&by=${$('#fb').value}`);
+  $('#fgo').onclick = apply; $('#fb').onchange = apply;
+}
+async function viewTurnover(_, params){
+  const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd();
+  await loadProducts();
+  const rows = await q(sb.from('document_items').select('product_id,qty,unit_cost,documents!inner(type,status,doc_date)').eq('documents.status','posted').lte('documents.doc_date',to));
+  const r = {};
+  rows.forEach(x => { const s = T[x.documents.type].sign; if (!s) return; const o = r[x.product_id] = r[x.product_id] || {start:0,in:0,out:0};
+    if (x.documents.doc_date < from) o.start += s*x.qty; else if (s>0) o.in += +x.qty; else o.out += +x.qty; });
+  const list = Object.entries(r).map(([id,o]) => ({ p: C.products.find(p=>p.id===+id) || {name:'?'}, ...o, end: o.start+o.in-o.out })).filter(x => x.start||x.in||x.out)
+    .sort((a,b) => a.p.name.localeCompare(b.p.name));
+  $('#main').innerHTML = `<div class="head"><h1>Обороты товаров</h1><div class="sp"></div><button onclick="print()">Печать</button></div>
+  <div class="toolbar"><label class="small muted">с</label><input type="date" id="ff" value="${from}"><label class="small muted">по</label><input type="date" id="ft" value="${to}"><button id="fgo">Показать</button></div>
+  ${list.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Товар</th><th class="n">Начало периода</th><th class="n">Приход</th><th class="n">Расход</th><th class="n">Конец периода</th><th class="n">Сумма на конец</th></tr></thead><tbody>
+  ${list.map(x => `<tr class="click" data-id="${x.p.id}"><td>${esc(x.p.code)}</td><td>${esc(x.p.name)}</td><td class="n">${num(x.start)}</td><td class="n pos">${x.in?'+'+num(x.in):''}</td><td class="n neg">${x.out?'−'+num(x.out):''}</td><td class="n">${num(x.end)}</td><td class="n">${money(x.end*(x.p.avg_cost||0))}</td></tr>`).join('')}</tbody>
+  <tfoot><tr><td colspan="2">Итого</td><td class="n">${num(sum(list,x=>x.start))}</td><td class="n">${num(sum(list,x=>x.in))}</td><td class="n">${num(sum(list,x=>x.out))}</td><td class="n">${num(sum(list,x=>x.end))}</td><td class="n">${money(sum(list,x=>x.end*(x.p.avg_cost||0)))}</td></tr></tfoot></table></div>`
+  : '<div class="panel empty">За период движений нет</div>'}`;
+  $$('tr.click').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.id));
+  $('#fgo').onclick = () => go(`#/reports/turnover?from=${$('#ff').value}&to=${$('#ft').value}`);
+}
+async function viewStale(_, params){
+  const days = +(params.get('days') || STALE_DAYS);
+  await loadProducts();
+  const rows = C.products.filter(p => p.stock>0 && p.days_in_stock >= days).sort((a,b) => b.days_in_stock - a.days_in_stock);
+  $('#main').innerHTML = `<div class="head"><h1>Залежавшийся товар</h1><div class="sp"></div><button onclick="print()">Печать</button></div>
+  <div class="toolbar"><span class="small muted">На складе дольше</span><input type="number" id="fd" value="${days}" style="width:90px;min-width:0"><span class="small muted">дней</span><button id="fgo">Показать</button></div>
+  <div class="cards"><div class="card"><div class="l">Позиций</div><div class="v">${rows.length}</div></div><div class="card"><div class="l">Деньги в товаре</div><div class="v red">${money(sum(rows,p=>p.stock_value))}</div></div></div>
+  ${rows.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Товар</th><th>Категория</th><th>Состояние</th><th class="n">Остаток</th><th class="n">Себестоимость</th><th class="n">Цена продажи</th><th class="n">Дней</th></tr></thead><tbody>
+  ${rows.map(p => `<tr class="click" data-id="${p.id}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.condition)}</td><td class="n">${num(p.stock)}</td><td class="n">${money(p.stock_value)}</td>
+    <td class="n">${p.sale_price?money(p.sale_price):''}</td><td class="n"><span class="badge b-old">${p.days_in_stock}</span></td></tr>`).join('')}</tbody></table></div>
+  <p class="small muted">Такие позиции стоит уценить, выставить на другие площадки или продать оптом.</p>` : '<div class="panel empty">Залежавшегося товара нет</div>'}`;
+  $$('tr.click').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.id));
+  $('#fgo').onclick = () => go('#/reports/stale?days=' + $('#fd').value);
+}
+
+/* ---------- Поиск ---------- */
+async function viewSearch(_, params){
+  const s = (params.get('q')||'').trim(); $('#gsearch').value = s; const l = s.toLowerCase();
+  await loadProducts();
+  const prods = C.products.filter(p => [p.code,p.name,p.serial,p.barcode,p.description,p.location].some(v => (v||'').toLowerCase().includes(l)));
+  const cps = C.cps.filter(c => [c.name,c.phone].some(v => (v||'').toLowerCase().includes(l)));
+  const docs = await q(sb.from('v_doc_totals').select('*').or(`number.ilike.%${s.replace(/[,()]/g,' ')}%,comment.ilike.%${s.replace(/[,()]/g,' ')}%,counterparty.ilike.%${s.replace(/[,()]/g,' ')}%`).order('doc_date',{ascending:false}).limit(50));
+  $('#main').innerHTML = `<div class="head"><h1>Поиск: «${esc(s)}»</h1></div>
+  <div class="panel"><h2>Товары (${prods.length})</h2>${prods.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Наименование</th><th>Серийный №</th><th>Состояние</th><th class="n">Остаток</th><th class="n">Себестоимость</th></tr></thead><tbody>
+    ${prods.slice(0,100).map(p => `<tr class="click" data-p="${p.id}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.serial)}</td><td>${esc(p.condition)}</td><td class="n">${num(p.stock)}</td><td class="n">${money(p.avg_cost)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="small muted">Не найдено</div>'}</div>
+  <div class="panel"><h2>Документы (${docs.length})</h2>${docs.length ? docTable(docs, true) : '<div class="small muted">Не найдено</div>'}</div>
+  <div class="panel"><h2>Контрагенты (${cps.length})</h2>${cps.length ? cps.map(c => `<div><a href="#/counterparty/${c.id}">${esc(c.name)}</a> <span class="small muted">${esc(c.phone)}</span></div>`).join('') : '<div class="small muted">Не найдено</div>'}</div>`;
+  $$('tr[data-p]').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.p)); bindDocRows();
+}
+
+/* ---------- Настройки ---------- */
+async function viewSettings(){
+  const members = await q(sb.from('members').select('*'));
+  const sections = [['categories','Категории товаров'],['channels','Каналы продаж'],['accounts','Счета (кассы)'],['expense_items','Статьи доходов и расходов']];
+  $('#main').innerHTML = `<div class="head"><h1>Справочники</h1></div><div class="grid g2">
+  ${sections.map(([tb,title]) => `<div class="panel"><h2>${title}</h2><div class="tw"><table><tbody>
+    ${C[{categories:'categories',channels:'channels',accounts:'accounts',expense_items:'items'}[tb]].map(x => `<tr><td><input data-tb="${tb}" data-id="${x.id}" value="${esc(x.name)}"></td>
+    ${tb==='expense_items' ? `<td class="small muted">${x.kind==='income'?'доход':'расход'}</td>` : ''}<td style="width:40px"><button class="link" data-rm="${tb}:${x.id}" title="Удалить">✕</button></td></tr>`).join('')}
+    </tbody></table></div><div class="row" style="margin-top:8px"><input placeholder="Новое значение" data-new="${tb}" style="flex:1">
+    ${tb==='expense_items' ? '<select data-kind style="width:auto"><option value="expense">расход</option><option value="income">доход</option></select>' : ''}<button data-add="${tb}">Добавить</button></div></div>`).join('')}
+  <div class="panel"><h2>Пользователи</h2>${members.map(m => `<div>${esc(m.name)} <span class="small muted">${esc(m.email)}</span></div>`).join('')}
+    <p class="small muted">Доступ к складу есть только у этих email. Чтобы добавить сотрудника, попросите Claude.</p></div></div>`;
+  $$('input[data-tb]').forEach(i => i.onchange = async () => { if (!i.value.trim()) return; await q(sb.from(i.dataset.tb).update({name:i.value.trim()}).eq('id',i.dataset.id)); await loadRefs(); toast('Сохранено'); });
+  $$('[data-rm]').forEach(b => b.onclick = async () => { const [tb,id] = b.dataset.rm.split(':');
+    if (!(await confirmBox('Удалить значение?'))) return;
+    const { error } = await sb.from(tb).delete().eq('id',id); if (error){ toast('Значение уже используется в документах, удалить нельзя. Его можно переименовать.', true); return; }
+    await loadRefs(); route(); });
+  $$('[data-add]').forEach(b => b.onclick = async () => { const tb = b.dataset.add, inp = $(`[data-new="${tb}"]`); if (!inp.value.trim()) return;
+    const o = { name: inp.value.trim() }; if (tb==='expense_items') o.kind = b.parentElement.querySelector('[data-kind]').value;
+    await q(sb.from(tb).insert(o)); await loadRefs(); route(); });
+}
+
+/* ---------- Экспорт CSV ---------- */
+function exportCSV(kind){
+  const cols = [['code','Код'],['name','Наименование'],['category','Категория'],['condition','Состояние'],['serial','Серийный номер'],['barcode','Штрихкод'],['location','Место'],
+    ['stock','Остаток'],['reserved','Резерв'],['avg_cost','Себестоимость за шт'],['stock_value','Сумма'],['sale_price','Цена продажи'],['days_in_stock','Дней на складе'],['description','Описание']];
+  const rows = C.products.filter(p => kind==='stock' ? p.stock>0 : true);
+  const csv = '﻿' + [cols.map(c=>c[1]).join(';'), ...rows.map(p => cols.map(([k]) => `"${String(p[k] ?? '').replace(/"/g,'""')}"`).join(';'))].join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download = (kind==='stock'?'ostatki':'tovary') + '_' + today() + '.csv'; a.click();
+}
+</script>
+</body>
+</html>
