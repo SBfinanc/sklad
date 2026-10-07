@@ -148,8 +148,6 @@ tfoot td{font-weight:600;background:#fafbfd}
     <div class="grp">Деньги</div>
     <a href="#/payments">Обороты ДДС</a>
     <a href="#/money">Аналитика денег</a>
-    <div class="grp">Контрагенты</div>
-    <a href="#/counterparties">Поставщики и покупатели</a>
     <div class="grp">Отчёты</div>
     <a href="#/reports/profit">Прибыльность</a>
     <a href="#/reports/turnover">Обороты товаров</a>
@@ -977,8 +975,12 @@ async function viewSettings(){
     ${tb==='expense_items' ? `<td class="small muted">${x.kind==='income'?'доход':'расход'}</td>` : ''}<td style="width:40px"><button class="link" data-rm="${tb}:${x.id}" title="Удалить">✕</button></td></tr>`).join('')}
     </tbody></table></div><div class="row" style="margin-top:8px"><input placeholder="Новое значение" data-new="${tb}" style="flex:1">
     ${tb==='expense_items' ? '<select data-kind style="width:auto"><option value="expense">расход</option><option value="income">доход</option></select>' : ''}<button data-add="${tb}">Добавить</button></div></div>`).join('')}
+  <div class="panel" style="grid-column:1/-1"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Поставщики и покупатели</h2><div style="flex:1"></div><a href="#/counterparties" class="small">Список с балансами</a><button class="primary" id="cpadd2">+ Контрагент</button></div>
+    ${C.cps.length ? `<div class="tw"><table><thead><tr><th>Название</th><th>Тип</th><th>Телефон</th></tr></thead><tbody>${C.cps.map(c => `<tr class="click" data-cp="${c.id}"><td>${esc(c.name)}</td><td class="small">${KIND[c.kind]||''}</td><td>${esc(c.phone)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="small muted">Пока никого нет. Нажмите «+ Контрагент».</div>'}</div>
   <div class="panel"><h2>Пользователи</h2>${members.map(m => `<div>${esc(m.name)} <span class="small muted">${esc(m.email)}</span></div>`).join('')}
     <p class="small muted">Доступ к складу есть только у этих email. Чтобы добавить сотрудника, попросите Claude.</p></div></div>`;
+  $('#cpadd2').onclick = () => cpModal('retail', () => route());
+  $$('[data-cp]').forEach(tr => tr.onclick = () => go('#/counterparty/' + tr.dataset.cp));
   $$('input[data-tb]').forEach(i => i.onchange = async () => { if (!i.value.trim()) return; await q(sb.from(i.dataset.tb).update({name:i.value.trim()}).eq('id',i.dataset.id)); await loadRefs(); toast('Сохранено'); });
   $$('[data-rm]').forEach(b => b.onclick = async () => { const [tb,id] = b.dataset.rm.split(':');
     if (!(await confirmBox('Удалить значение?'))) return;
