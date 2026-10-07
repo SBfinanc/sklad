@@ -187,7 +187,7 @@ const nf2 = new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
 const money = v => nf.format(Math.round(+v||0)) + ' ₸';
 const num = v => nf2.format(+v||0);
 const pct = v => (isFinite(v) ? (v*100).toFixed(1).replace('.',',') : '0') + '%';
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => new Date().toLocaleDateString('sv', { timeZone:'Asia/Almaty' });
 const fdate = s => s ? s.slice(0,10).split('-').reverse().join('.') : '';
 const monthStart = (d=new Date()) => new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('sv');
 const monthEnd = (d=new Date()) => new Date(d.getFullYear(), d.getMonth()+1, 0).toLocaleDateString('sv');
@@ -203,6 +203,11 @@ async function q(p){
   const { data, error } = await p;
   if (error){ toast(error.message, true); throw error; }
   return data;
+}
+async function qAll(mk){
+  const out = [];
+  for (let from = 0; ; from += 1000){ const r = await q(mk().range(from, from + 999)); out.push(...r); if (r.length < 1000) break; }
+  return out;
 }
 function modal(html, onReady){
   const bg = document.createElement('div'); bg.className = 'modal-bg';
@@ -230,7 +235,7 @@ async function loadRefs(){
   ]);
   Object.assign(C, { categories:cat, channels:ch, accounts:acc, items:it, cps });
 }
-async function loadProducts(){ C.products = await q(sb.from('v_stock').select('*').order('name')); return C.products; }
+async function loadProducts(){ C.products = await qAll(() => sb.from('v_stock').select('*').order('name').order('id')); return C.products; }
 const opts = (arr, sel, empty) => (empty !== undefined ? `<option value="">${esc(empty)}</option>` : '') +
   arr.map(x => `<option value="${x.id}" ${String(x.id)===String(sel)?'selected':''}>${esc(x.name)}</option>`).join('');
 
@@ -335,15 +340,16 @@ $('#gsearch').addEventListener('keydown', e => { if (e.key==='Enter' && e.target
 /* ---------- Показатели ---------- */
 async function viewDashboard(_, params){
   const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd();
-  const [lines, pays, stock, bal, recent, cpb] = await Promise.all([
-    q(sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to)),
-    q(sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date',from).lte('pay_date',to)),
+  const [lines, pays, stock, bal, recent, cpb, losses] = await Promise.all([
+    qAll(() => sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to).order('doc_date').order('document_id').order('product_id')),
+    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date',from).lte('pay_date',to).order('id')),
     loadProducts(),
     q(sb.from('v_account_balances').select('*').order('sort')),
     q(sb.from('v_doc_totals').select('*').order('created_at',{ascending:false}).limit(8)),
     q(sb.from('v_counterparty_balances').select('balance')),
+    qAll(() => sb.from('v_loss_lines').select('loss').gte('doc_date',from).lte('doc_date',to).order('document_id').order('product_id')),
   ]);
-  const revenue = sum(lines, x=>x.revenue), gross = sum(lines, x=>x.profit);
+  const revenue = sum(lines, x=>x.revenue), gross = sum(lines, x=>x.profit), lossSum = sum(losses, x=>x.loss);
   const opex = sum(pays.filter(p => p.direction==='out' && !OPEX_EXCLUDE.includes(p.expense_items?.name)), p=>p.amount);
   const soldQty = sum(lines, x=>x.qty);
   const saleDocs = new Set(lines.filter(x=>x.type==='sale').map(x=>x.document_id)).size;
@@ -359,7 +365,8 @@ async function viewDashboard(_, params){
     <div class="card"><div class="l">Выручка</div><div class="v">${money(revenue)}</div><div class="s">${saleDocs} отгрузок · ${num(soldQty)} шт</div></div>
     <div class="card"><div class="l">Валовая прибыль</div><div class="v ${gross>=0?'green':'red'}">${money(gross)}</div><div class="s">маржа ${pct(revenue? gross/revenue : 0)}</div></div>
     <div class="card"><div class="l">Операционные расходы</div><div class="v">${money(opex)}</div><div class="s">аренда, реклама, доставка и др.</div></div>
-    <div class="card"><div class="l">Чистая прибыль</div><div class="v ${gross-opex>=0?'green':'red'}">${money(gross-opex)}</div><div class="s">прибыль минус расходы</div></div>
+    <div class="card"><div class="l">Потери от списаний</div><div class="v ${lossSum>0?'red':''}">${money(lossSum)}</div><div class="s">списания и убыток при возврате поставщику</div></div>
+    <div class="card"><div class="l">Чистая прибыль</div><div class="v ${gross-opex-lossSum>=0?'green':'red'}">${money(gross-opex-lossSum)}</div><div class="s">прибыль минус расходы и потери</div></div>
   </div>
   <div class="cards">
     <div class="card"><div class="l">На складе</div><div class="v">${num(sum(inStock,p=>p.stock))} шт</div><div class="s">${inStock.length} позиций · в резерве ${num(sum(stock,p=>p.reserved))}</div></div>
@@ -561,7 +568,7 @@ async function viewDoc(id, type){
   if (id){
     d = await q(sb.from('documents').select('*').eq('id',id).single());
     items = await q(sb.from('document_items').select('*').eq('document_id',id).order('id'));
-    pays = await q(sb.from('payments').select('*, accounts(name)').eq('document_id',id).order('pay_date'));
+    pays = await q(sb.from('payments').select('*, accounts(name), expense_items(name), counterparties(name)').eq('document_id',id).order('pay_date'));
     children = await q(sb.from('documents').select('id,type,number,status').eq('base_id',id));
     type = d.type;
   } else {
@@ -587,13 +594,14 @@ async function viewDoc(id, type){
   $('#main').innerHTML = `
   <div class="head noprint"><a href="#/docs/${type}">← ${t.many}</a></div>
   <div class="head"><h1>${t.one} ${d.number ? esc(d.number) : '(новый)'}</h1>${id ? badge(d.status,type) : ''}<div class="sp"></div><span id="dacts" class="row noprint"></span></div>
+  ${type==='customer_return' && !d.base_id ? '<p class="small muted">Возврат покупателя оформляется из отгрузки: откройте проведённую отгрузку и нажмите «Возврат».</p>' : ''}
   <div class="panel" id="dhead"><div class="grid g4">
     <div class="field"><label class="f">Дата</label><input type="date" name="doc_date" value="${d.doc_date}" ${ro?'disabled':''}></div>
     ${t.cp ? `<div class="field" style="grid-column:span 2"><label class="f">${t.cp}</label><div class="row" style="flex-wrap:nowrap">
       <select name="counterparty_id" ${ro?'disabled':''}>${opts(C.cps, d.counterparty_id, '— не указан —')}</select>
       ${ro?'':'<button id="newcp" title="Новый контрагент">+</button>'}</div></div>` : '<div style="grid-column:span 2"></div>'}
     ${['sale','order','customer_return'].includes(type) ? `<div class="field"><label class="f">Канал продажи</label><select name="channel_id" ${ro?'disabled':''}>${opts(C.channels,d.channel_id,'—')}</select></div>` : '<div></div>'}
-    ${t.extra ? `<div class="field" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}></div>` : ''}
+    ${t.extra ? `<div class="field" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}><div class="small faint">Эти расходы уже учтены в документе, отдельным платежом их вносить не нужно.</div></div>` : ''}
     <div class="field" style="grid-column:span ${t.extra?2:4}"><label class="f">Комментарий</label><input name="comment" value="${esc(d.comment)}" ${ro?'disabled':''}></div>
   </div>
   ${d.base_id ? `<p class="small muted" style="margin:10px 0 0">Создан на основании: <a href="#/doc/${d.base_id}">документа</a></p>` : ''}
@@ -608,9 +616,7 @@ async function viewDoc(id, type){
       <tfoot><tr><td colspan="3">Итого</td><td class="n" id="tq"></td><td></td><td class="n" id="ts"></td>${d.status==='posted'?'<td></td>':''}${d.status==='posted' && type==='sale'?'<td class="n" id="tp"></td>':''}<td class="noprint"></td></tr></tfoot></table></div>
   </div>
   ${id && type!=='order' && type!=='enter' && type!=='writeoff' ? `<div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Оплаты</h2><div style="flex:1"></div><button id="addpay" class="noprint">+ ${['sale','supplier_return'].includes(type)?'Принять оплату':'Оплатить'}</button></div>
-    ${pays.length ? `<div class="tw"><table><thead><tr><th>Дата</th><th>Счёт</th><th class="n">Сумма</th><th>Внёс</th></tr></thead><tbody>
-    ${pays.map(p => `<tr><td>${fdate(p.pay_date)}</td><td>${esc(p.accounts?.name)}</td><td class="n">${money(p.amount)}</td><td class="small">${esc(p.created_by)}</td></tr>`).join('')}</tbody></table></div>`
-    : '<div class="small muted">Оплат нет.</div>'}</div>` : ''}
+    ${payTable(pays)}</div>` : ''}
   ${!id && ['sale','purchase','customer_return','supplier_return'].includes(type) ? `<div class="panel noprint" id="paynow"><label class="row"><input type="checkbox" id="pn"> ${['sale','supplier_return'].includes(type)?'Оплата получена сразу':'Оплачено сразу'}</label>
     <div class="row hidden" id="pnacc" style="margin-top:8px"><span class="small muted">на счёт</span><select id="pnaccsel" style="width:auto">${opts(C.accounts,C.accounts[0]?.id)}</select></div></div>` : ''}`;
 
@@ -676,13 +682,18 @@ async function viewDoc(id, type){
 
   const save = async () => {
     const h = readForm($('#dhead'));
-    const rec = { type, doc_date: h.doc_date || today(), counterparty_id: h.counterparty_id ?? null, channel_id: h.channel_id ?? null,
-      extra_cost: h.extra_cost || 0, comment: h.comment, base_id: d.base_id };
     if (!items.length){ toast('Добавьте хотя бы одну позицию', true); throw new Error('no items'); }
     if (items.some(i => !(i.qty > 0))){ toast('Количество должно быть больше нуля', true); throw new Error('qty'); }
+    const head = { type, doc_date: h.doc_date || today(), counterparty_id: h.counterparty_id ?? null, channel_id: h.channel_id ?? null,
+      extra_cost: h.extra_cost || 0, comment: h.comment, base_id: d.base_id };
+    const payload = items.map(i => ({ product_id:i.product_id, qty:i.qty, price:i.price||0 }));
+    const r = await sb.rpc('save_document', { p_id: id || null, p_head: head, p_items: payload });
+    if (!r.error){ dirty = false; return r.data; }
+    if (r.error.code !== 'PGRST202' && !/Could not find the function/i.test(r.error.message || '')){ toast(r.error.message, true); throw r.error; }
+    // запасной путь, пока функция сохранения не установлена в базе
     let docId = id;
-    if (id) await q(sb.from('documents').update(rec).eq('id', id));
-    else { const r = await q(sb.from('documents').insert(rec).select().single()); docId = r.id; }
+    if (id) await q(sb.from('documents').update(head).eq('id', id));
+    else { const r2 = await q(sb.from('documents').insert(head).select().single()); docId = r2.id; }
     await q(sb.from('document_items').delete().eq('document_id', docId));
     await q(sb.from('document_items').insert(items.map(i => ({ document_id:docId, product_id:i.product_id, qty:i.qty, price:i.price||0 }))));
     dirty = false;
@@ -697,6 +708,7 @@ async function viewDoc(id, type){
       account_id: +$('#pnaccsel').value, item_id: C.items.find(x => x.name===itemName)?.id, counterparty_id: +$('[name=counterparty_id]').value || null, document_id: docId }));
   };
 
+  bindPayDel();
   const acts = $('#dacts');
   const btn = (txt, cls, fn) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls;
     b.onclick = async () => { b.disabled = true; try { await fn(); } catch(e){ console.error(e); } finally { b.disabled = false; } }; acts.appendChild(b); };
@@ -704,8 +716,9 @@ async function viewDoc(id, type){
     if (d.status==='draft'){
       btn('Сохранить', '', async () => { const nid = await save(); toast('Сохранено'); id ? route() : go('#/doc/'+nid); });
       btn('В резерв', 'primary', async () => { const nid = await save();
-        for (const i of items){ const p = prod(i.product_id); if (p.available < i.qty){ toast(`Недостаточно доступного остатка: ${p.name}`, true); return; } }
-        await q(sb.from('documents').update({status:'reserved'}).eq('id',nid)); toast('Товар зарезервирован'); id ? route() : go('#/doc/'+nid); });
+        const { error } = await sb.rpc('reserve_order', { p_doc:nid });
+        if (error){ toast(error.message, true); if (!id) go('#/doc/'+nid); return; }
+        toast('Товар зарезервирован'); id ? route() : go('#/doc/'+nid); });
     }
     if (d.status==='reserved'){
       btn('Снять резерв', '', async () => { await q(sb.from('documents').update({status:'draft'}).eq('id',id)); route(); });
@@ -715,7 +728,13 @@ async function viewDoc(id, type){
     if (d.status==='cancelled') btn('Восстановить', '', async () => { await q(sb.from('documents').update({status:'draft'}).eq('id',id)); route(); });
   } else if (d.status==='draft'){
     btn('Сохранить', '', async () => { const nid = await save(); toast('Сохранено как черновик'); id ? route() : go('#/doc/'+nid); });
-    btn('Провести', 'primary', async () => { const nid = await save();
+    btn('Провести', 'primary', async () => {
+      if (['purchase','enter'].includes(type) && items.some(i => !(i.price > 0)) && !(await confirmBox('В документе есть позиции с ценой 0, это снизит себестоимость остатка. Провести всё равно?'))) return;
+      if (type==='sale'){
+        const low = items.map(i => ({ i, p: prod(i.product_id) })).filter(({i,p}) => (p.min_price && i.price < p.min_price) || i.price < Math.round(p.avg_cost||0));
+        if (low.length && !(await confirmBox('Цена ниже минимальной или ниже себестоимости: ' + low.map(({p}) => p.name).join(', ') + '. Провести всё равно?'))) return;
+      }
+      const nid = await save();
       const { error } = await sb.rpc('post_document', { p_doc:nid });
       if (error){ toast(error.message, true); if (!id) go('#/doc/'+nid); return; }
       await payNow(nid); toast('Документ проведён'); id ? route() : go('#/doc/'+nid); });
@@ -726,7 +745,7 @@ async function viewDoc(id, type){
     if (type==='purchase') btn('Возврат поставщику', '', async () => go(`#/doc/new/supplier_return?base=${id}`));
   }
   btn('Печать', '', async () => print());
-  if (id && d.status!=='posted') btn('Удалить', 'danger', async () => { if (!(await confirmBox('Удалить документ?'))) return;
+  if (id && ['draft','cancelled'].includes(d.status)) btn('Удалить', 'danger', async () => { if (!(await confirmBox('Удалить документ?'))) return;
     await q(sb.from('payments').update({document_id:null}).eq('document_id',id));
     await q(sb.from('documents').delete().eq('id',id)); toast('Удалено'); go('#/docs/'+type); });
 
@@ -832,7 +851,7 @@ async function viewPayments(_, params){
 }
 async function viewMoney(){
   const [bal, pays] = await Promise.all([q(sb.from('v_account_balances').select('*').order('sort')),
-    q(sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')))]);
+    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')).order('id'))]);
   const months = {}; pays.forEach(p => { const k = p.pay_date.slice(0,7); months[k] = months[k] || {in:0,out:0}; months[k][p.direction] += +p.amount; });
   const byItem = {}; pays.filter(p=>p.direction==='out').forEach(p => byItem[p.expense_items?.name||'Без статьи'] = (byItem[p.expense_items?.name||'Без статьи']||0) + +p.amount);
   $('#main').innerHTML = `<div class="head"><h1>Аналитика денег</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
@@ -842,7 +861,7 @@ async function viewMoney(){
     <div class="tw"><table><thead><tr><th>Месяц</th><th class="n">Приход</th><th class="n">Расход</th><th class="n">Разница</th></tr></thead><tbody>
     ${Object.keys(months).sort().map(k => `<tr><td>${k.slice(5)}.${k.slice(0,4)}</td><td class="n pos">${money(months[k].in)}</td><td class="n neg">${money(months[k].out)}</td><td class="n">${money(months[k].in-months[k].out)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Нет платежей</td></tr>'}
     </tbody></table></div></div>
-  <div class="panel"><h2>Расходы по статьям с начала года</h2><div class="tw"><table><tbody>
+  <div class="panel"><h2>Расходы по статьям с начала года (включая оплату поставщикам)</h2><div class="tw"><table><tbody>
     ${Object.entries(byItem).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('') || '<tr><td class="empty">Нет расходов</td></tr>'}</tbody></table></div></div></div>
   <p class="small muted">Начальный остаток денег на счёте вносится платежом «Приход» со статьёй «Вложение учредителя» или «Прочий приход».</p>`;
 }
@@ -894,7 +913,7 @@ async function viewInventory(){
 /* ---------- Отчёты ---------- */
 async function viewProfit(_, params){
   const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd(), by = params.get('by') || 'product';
-  const lines = await q(sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to));
+  const lines = await qAll(() => sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to).order('doc_date').order('document_id').order('product_id'));
   const dims = { product:['Товар', x => (x.code?x.code+' ':'')+x.product], category:['Категория', x => x.category||'Без категории'], channel:['Канал продажи', x => x.channel||'Не указан'],
     counterparty:['Покупатель', x => x.counterparty||'Не указан'], month:['Месяц', x => x.doc_date.slice(0,7)], day:['День', x => x.doc_date], created_by:['Сотрудник', x => x.created_by] };
   const g = {}; lines.forEach(x => { const k = dims[by][1](x); g[k] = g[k] || {qty:0,revenue:0,cost:0,expense:0,profit:0};
@@ -917,7 +936,7 @@ async function viewProfit(_, params){
 async function viewTurnover(_, params){
   const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd();
   await loadProducts();
-  const rows = await q(sb.from('document_items').select('product_id,qty,unit_cost,documents!inner(type,status,doc_date)').eq('documents.status','posted').lte('documents.doc_date',to));
+  const rows = await qAll(() => sb.from('document_items').select('product_id,qty,unit_cost,documents!inner(type,status,doc_date)').eq('documents.status','posted').lte('documents.doc_date',to).order('id'));
   const r = {};
   rows.forEach(x => { const s = T[x.documents.type].sign; if (!s) return; const o = r[x.product_id] = r[x.product_id] || {start:0,in:0,out:0};
     if (x.documents.doc_date < from) o.start += s*x.qty; else if (s>0) o.in += +x.qty; else o.out += +x.qty; });
@@ -925,7 +944,7 @@ async function viewTurnover(_, params){
     .sort((a,b) => a.p.name.localeCompare(b.p.name));
   $('#main').innerHTML = `<div class="head"><h1>Обороты товаров</h1><div class="sp"></div><button onclick="print()">Печать</button></div>
   <div class="toolbar"><label class="small muted">с</label><input type="date" id="ff" value="${from}"><label class="small muted">по</label><input type="date" id="ft" value="${to}"><button id="fgo">Показать</button></div>
-  ${list.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Товар</th><th class="n">Начало периода</th><th class="n">Приход</th><th class="n">Расход</th><th class="n">Конец периода</th><th class="n">Сумма на конец</th></tr></thead><tbody>
+  ${list.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Товар</th><th class="n">Начало периода</th><th class="n">Приход</th><th class="n">Расход</th><th class="n">Конец периода</th><th class="n">Сумма на конец (по текущей себестоимости)</th></tr></thead><tbody>
   ${list.map(x => `<tr class="click" data-id="${x.p.id}"><td>${esc(x.p.code)}</td><td>${esc(x.p.name)}</td><td class="n">${num(x.start)}</td><td class="n pos">${x.in?'+'+num(x.in):''}</td><td class="n neg">${x.out?'−'+num(x.out):''}</td><td class="n">${num(x.end)}</td><td class="n">${money(x.end*(x.p.avg_cost||0))}</td></tr>`).join('')}</tbody>
   <tfoot><tr><td colspan="2">Итого</td><td class="n">${num(sum(list,x=>x.start))}</td><td class="n">${num(sum(list,x=>x.in))}</td><td class="n">${num(sum(list,x=>x.out))}</td><td class="n">${num(sum(list,x=>x.end))}</td><td class="n">${money(sum(list,x=>x.end*(x.p.avg_cost||0)))}</td></tr></tfoot></table></div>`
   : '<div class="panel empty">За период движений нет</div>'}`;
