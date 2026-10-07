@@ -182,7 +182,7 @@ const T = {
 };
 const STATUS = {draft:'Черновик',posted:'Проведён',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
 const ORDER_STATUS = {draft:'Новый',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
-const CONDITIONS = ['Рабочее','Не проверено','Требует ремонта','На запчасти'];
+const CONDITIONS = ['Новый','Б/У','На запчасти'];
 const KIND = {supplier:'Поставщик',customer:'Покупатель',both:'Поставщик и покупатель'};
 const OPEX_EXCLUDE = ['Оплата поставщику','Возврат покупателю','Изъятие учредителя'];
 
@@ -432,14 +432,16 @@ async function viewProducts(_, params){
   draw();
 }
 
-function productForm(p={}){
+function productForm(p={}, intake=false){
   return `<div class="grid g3">
     <div class="field" style="grid-column:span 2"><label class="f">Наименование *</label><input name="name" value="${esc(p.name)}" placeholder="MSI GTX 1060 6GB"></div>
     <div class="field"><label class="f">Код</label><input name="code" value="${esc(p.code)}" placeholder="присвоится автоматически"></div>
     <div class="field"><label class="f">Категория</label><select name="category_id">${opts(C.categories,p.category_id,'—')}</select></div>
-    <div class="field"><label class="f">Состояние</label><select name="condition">${CONDITIONS.map(c=>`<option ${c===(p.condition||'Рабочее')?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label class="f">Состояние</label><select name="condition">${CONDITIONS.map(c=>`<option ${c===(p.condition||'Б/У')?'selected':''}>${c}</option>`).join('')}</select></div>
     <div class="field"><label class="f">Серийный номер</label><input name="serial" value="${esc(p.serial)}"></div>
     <div class="field"><label class="f">Штрихкод</label><input name="barcode" value="${esc(p.barcode)}"></div>
+    ${intake ? `<div class="field"><label class="f">Количество, шт *</label><input name="_qty" type="number" step="1" min="1" value="1"></div>
+    <div class="field"><label class="f">Цена закупки за шт, ₸</label><input name="_buy" type="number" step="1" min="0" placeholder="0"></div>` : ''}
     <div class="field"><label class="f">Цена продажи, ₸</label><input name="sale_price" type="number" step="1" value="${p.sale_price??''}"></div>
     <div class="field"><label class="f">Минимальная цена, ₸</label><input name="min_price" type="number" step="1" value="${p.min_price??''}"></div>
     <div class="field"><label class="f">Место хранения</label><input name="location" value="${esc(p.location)}" placeholder="Полка 2, коробка 5"></div>
@@ -608,7 +610,7 @@ async function viewDoc(id, type){
   <div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Позиции</h2><div style="flex:1"></div>
     ${ro ? '' : `<div class="picker" style="width:min(460px,100%)"><input id="padd" placeholder="Добавить товар: код, название, серийный номер"><div class="dd hidden" id="pdd"></div></div>
     ${['purchase','enter'].includes(type) ? '<button id="pnew">+ Новый товар</button>' : ''}`}</div>
-    <div class="tw items"><table><thead><tr><th>Код</th><th>Наименование</th><th class="n">Доступно</th><th class="n" style="width:90px">Кол-во</th><th class="n" style="width:140px">${t.price}</th><th class="n">Сумма</th>
+    <div class="tw items"><table><thead><tr><th>Код</th><th>Наименование</th><th class="n">Доступно</th><th class="n" style="width:120px">Количество, шт</th><th class="n" style="width:140px">${t.price}</th><th class="n">Сумма</th>
       ${d.status==='posted' ? '<th class="n">Себест.</th>' : ''}${d.status==='posted' && ['sale'].includes(type) ? '<th class="n">Прибыль</th>':''}<th class="noprint"></th></tr></thead><tbody id="ibody"></tbody>
       <tfoot><tr><td colspan="3">Итого</td><td class="n" id="tq"></td><td></td><td class="n" id="ts"></td>${d.status==='posted'?'<td></td>':''}${d.status==='posted' && type==='sale'?'<td class="n" id="tp"></td>':''}<td class="noprint"></td></tr></tfoot></table></div>
   </div>
@@ -641,10 +643,10 @@ async function viewDoc(id, type){
   let dirty = !id && items.length > 0;
   drawItems();
 
-  const addProduct = p => {
+  const addProduct = (p, qty=1, buy=null) => {
     const ex = items.find(i => i.product_id===p.id);
     const defPrice = ['sale','order'].includes(type) ? (p.sale_price||0) : ['writeoff','supplier_return','enter'].includes(type) ? Math.round(p.avg_cost||0) : 0;
-    if (ex) ex.qty += 1; else items.push({ product_id:p.id, qty:1, price:defPrice });
+    if (ex){ ex.qty += qty; if (buy!=null && buy>0) ex.price = buy; } else items.push({ product_id:p.id, qty, price: buy!=null ? buy : defPrice });
     dirty = true; drawItems();
   };
   if (!ro){
@@ -666,11 +668,12 @@ async function viewDoc(id, type){
       if (e.key==='Enter' && found[act]){ addProduct(found[act]); inp.value=''; dd.classList.add('hidden'); }
     };
     inp.onblur = () => setTimeout(() => dd.classList.add('hidden'), 150);
-    if ($('#pnew')) $('#pnew').onclick = () => modal(`<h2>Новый товар</h2><div id="npf">${productForm({})}</div>
+    if ($('#pnew')) $('#pnew').onclick = () => modal(`<h2>Новый товар</h2><div id="npf">${productForm({},true)}</div>
       <div class="acts"><button data-c>Отмена</button><button class="primary" data-s>Создать и добавить</button></div>`, (m, close) => {
         $('[data-c]',m).onclick = close;
         $('[data-s]',m).onclick = async () => { const o = readForm($('#npf',m)); if (!o.name){ toast('Введите наименование',true); return; }
-          const r = await q(sb.from('products').insert(o).select().single()); await loadProducts(); addProduct(C.products.find(p=>p.id===r.id) || r); close(); };
+          const qty = Math.max(1, Math.round(o._qty || 1)), buy = Math.max(0, o._buy || 0); delete o._qty; delete o._buy;
+          const r = await q(sb.from('products').insert(o).select().single()); await loadProducts(); addProduct(C.products.find(p=>p.id===r.id) || r, qty, buy); close(); };
       });
     if ($('#newcp')) $('#newcp').onclick = () => cpModal(['purchase','supplier_return'].includes(type)?'supplier':'customer', cp => {
       const sel = $('[name=counterparty_id]'); sel.insertAdjacentHTML('beforeend', `<option value="${cp.id}">${esc(cp.name)}</option>`); sel.value = cp.id; });
