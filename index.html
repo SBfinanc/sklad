@@ -145,11 +145,9 @@ tfoot td{font-weight:600;background:#fafbfd}
     <a href="#/stock">Остатки</a>
     <a href="#/docs/enter">Оприходования</a>
     <a href="#/docs/writeoff">Списания</a>
-    <a href="#/inventory">Инвентаризация</a>
     <div class="grp">Деньги</div>
-    <a href="#/payments">Платежи</a>
-    <a href="#/money">Остатки денег</a>
-    <a href="#/settlements">Взаиморасчёты</a>
+    <a href="#/payments">Обороты ДДС</a>
+    <a href="#/money">Аналитика денег</a>
     <div class="grp">Контрагенты</div>
     <a href="#/counterparties">Поставщики и покупатели</a>
     <div class="grp">Отчёты</div>
@@ -169,7 +167,7 @@ tfoot td{font-weight:600;background:#fafbfd}
 const SB_URL = 'https://hsgpddcgrdobgfzrnmjz.supabase.co';
 const SB_KEY = 'sb_publishable_i2q2SL5deqqE1y4kZIhXrA_Mvvc0GtB';
 const sb = supabase.createClient(SB_URL, SB_KEY);
-const STALE_DAYS = 60;
+const STALE_DAYS = 90;
 
 const T = {
   purchase:{one:'Приёмка',many:'Приёмки',cp:'Поставщик',extra:'Доставка и накладные расходы',price:'Цена закупки',sign:1},
@@ -183,7 +181,7 @@ const T = {
 const STATUS = {draft:'Черновик',posted:'Проведён',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
 const ORDER_STATUS = {draft:'Новый',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
 const CONDITIONS = ['Новый','Б/У','На запчасти'];
-const KIND = {supplier:'Поставщик',customer:'Покупатель',both:'Поставщик и покупатель'};
+const KIND = {retail:'Физлицо (розница)',wholesale:'Физлицо (опт)'};
 const OPEX_EXCLUDE = ['Оплата поставщику','Возврат покупателю','Изъятие учредителя'];
 
 const $ = (s, el=document) => el.querySelector(s);
@@ -373,7 +371,7 @@ async function viewDashboard(_, params){
     <div class="card"><div class="l">Склад по себестоимости</div><div class="v">${money(sum(inStock,p=>p.stock_value))}</div><div class="s">деньги в товаре</div></div>
     <div class="card"><div class="l">Залежалось > ${STALE_DAYS} дней</div><div class="v ${stale.length?'red':''}">${stale.length} поз.</div><div class="s"><a href="#/reports/stale">${money(sum(stale,p=>p.stock_value))} в товаре</a></div></div>
     <div class="card"><div class="l">Деньги на счетах</div><div class="v">${money(sum(bal,b=>b.balance))}</div><div class="s">${bal.map(b=>esc(b.name)+': '+money(b.balance)).join(' · ')}</div></div>
-    <div class="card"><div class="l">Долги</div><div class="v small" style="font-size:15px;margin-top:6px">Нам должны: ${money(owe)}<br>Мы должны: ${money(weOwe)}</div><div class="s"><a href="#/settlements">взаиморасчёты</a></div></div>
+    <div class="card"><div class="l">Долги</div><div class="v small" style="font-size:15px;margin-top:6px">Нам должны: ${money(owe)}<br>Мы должны: ${money(weOwe)}</div></div>
   </div>
   <div class="grid g2">
     <div class="panel"><h2>Продажи и прибыль по дням</h2><div class="chart"><canvas id="ch1"></canvas></div></div>
@@ -442,9 +440,9 @@ function productForm(p={}, intake=false){
     <div class="field"><label class="f">Штрихкод</label><input name="barcode" value="${esc(p.barcode)}"></div>
     ${intake ? `<div class="field"><label class="f">Количество, шт *</label><input name="_qty" type="number" step="1" min="1" value="1"></div>
     <div class="field"><label class="f">Цена закупки за шт, ₸</label><input name="_buy" type="number" step="1" min="0" placeholder="0"></div>` : ''}
-    <div class="field"><label class="f">Цена продажи, ₸</label><input name="sale_price" type="number" step="1" value="${p.sale_price??''}"></div>
+    ${intake ? '' : `    <div class="field"><label class="f">Цена продажи, ₸</label><input name="sale_price" type="number" step="1" value="${p.sale_price??''}"></div>
     <div class="field"><label class="f">Минимальная цена, ₸</label><input name="min_price" type="number" step="1" value="${p.min_price??''}"></div>
-    <div class="field"><label class="f">Место хранения</label><input name="location" value="${esc(p.location)}" placeholder="Полка 2, коробка 5"></div>
+    <div class="field"><label class="f">Место хранения</label><input name="location" value="${esc(p.location)}" placeholder="Полка 2, коробка 5"></div>`}
     <div class="field" style="grid-column:span 2"><label class="f">Ссылка на фото</label><input name="photo_url" value="${esc(p.photo_url)}" placeholder="https://…"></div>
     <div class="field" style="grid-column:1/-1"><label class="f">Описание (ревизия, дефекты, комплектация)</label><textarea name="description">${esc(p.description)}</textarea></div>
   </div>`;
@@ -597,7 +595,7 @@ async function viewDoc(id, type){
   <div class="panel" id="dhead"><div class="grid g4">
     <div class="field"><label class="f">Дата</label><input type="date" name="doc_date" value="${d.doc_date}" ${ro?'disabled':''}></div>
     ${t.cp ? `<div class="field" style="grid-column:span 2"><label class="f">${t.cp}</label><div class="row" style="flex-wrap:nowrap">
-      <select name="counterparty_id" ${ro?'disabled':''}>${opts(C.cps.filter(c => c.kind==='both' || c.kind===(['purchase','supplier_return'].includes(type)?'supplier':'customer') || c.id===d.counterparty_id), d.counterparty_id, '— не указан —')}</select>
+      <select name="counterparty_id" ${ro?'disabled':''}>${opts(C.cps, d.counterparty_id, '— не указан —')}</select>
       ${ro?'':'<button id="newcp" title="Новый контрагент">+</button>'}</div></div>` : '<div style="grid-column:span 2"></div>'}
     ${['sale','order','customer_return'].includes(type) ? `<div class="field"><label class="f">Канал продажи</label><select name="channel_id" ${ro?'disabled':''}>${opts(C.channels,d.channel_id,'—')}</select></div>` : '<div></div>'}
     ${t.extra ? `<div class="field" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}></div>` : ''}
@@ -747,7 +745,7 @@ async function viewDoc(id, type){
 function cpModal(kind, cb, cp={}){
   modal(`<h2>${cp.id?'Контрагент':'Новый контрагент'}</h2><div id="cpf" class="grid g2">
     <div class="field" style="grid-column:1/-1"><label class="f">Название или имя *</label><input name="name" value="${esc(cp.name)}"></div>
-    <div class="field"><label class="f">Тип</label><select name="kind">${Object.entries(KIND).map(([k,v]) => `<option value="${k}" ${k===(cp.kind||kind||'both')?'selected':''}>${v}</option>`).join('')}</select></div>
+    <div class="field"><label class="f">Тип</label><select name="kind">${Object.entries(KIND).map(([k,v]) => `<option value="${k}" ${k===(cp.kind||'retail')?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="field"><label class="f">Телефон</label><input name="phone" value="${esc(cp.phone)}"></div>
     <div class="field" style="grid-column:1/-1"><label class="f">Контакт (OLX, Instagram, Telegram)</label><input name="contact" value="${esc(cp.contact)}"></div>
     <div class="field" style="grid-column:1/-1"><label class="f">Заметка</label><textarea name="note">${esc(cp.note)}</textarea></div></div>
@@ -763,7 +761,7 @@ async function viewCounterparties(){
   $('#main').innerHTML = `<div class="head"><h1>Контрагенты</h1><div class="sp"></div><button class="primary" id="cpadd">+ Контрагент</button></div>
   <div class="toolbar"><input id="cq" placeholder="Имя, телефон, контакт" style="max-width:340px"><select id="ck"><option value="">Все</option>${Object.entries(KIND).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div><div id="clist"></div>`;
   const draw = () => { const s = $('#cq').value.toLowerCase(), k = $('#ck').value;
-    const r = rows.filter(c => (!k || c.kind===k || c.kind==='both') && (!s || [c.name,c.phone,c.contact].some(v => (v||'').toLowerCase().includes(s))));
+    const r = rows.filter(c => (!k || c.kind===k) && (!s || [c.name,c.phone,c.contact].some(v => (v||'').toLowerCase().includes(s))));
     $('#clist').innerHTML = r.length ? `<div class="tw"><table><thead><tr><th>Название</th><th>Тип</th><th>Телефон</th><th>Контакт</th><th class="n">Купили у нас</th><th class="n">Продали нам</th><th class="n">Баланс</th></tr></thead><tbody>
       ${r.map(c => `<tr class="click" data-id="${c.id}"><td>${esc(c.name)}</td><td class="small">${KIND[c.kind]}</td><td>${esc(c.phone)}</td><td class="small">${esc(c.contact)}</td>
       <td class="n">${money(c.sold)}</td><td class="n">${money(c.bought)}</td><td class="n ${c.balance>0?'pos':c.balance<0?'neg':''}">${c.balance ? money(c.balance) : '—'}</td></tr>`).join('')}</tbody></table></div>
@@ -827,7 +825,7 @@ async function viewPayments(_, params){
   if (dir) qr = qr.eq('direction',dir); if (acc) qr = qr.eq('account_id',acc);
   const rows = await q(qr);
   const inS = sum(rows.filter(p=>p.direction==='in'),p=>p.amount), outS = sum(rows.filter(p=>p.direction==='out'),p=>p.amount);
-  $('#main').innerHTML = `<div class="head"><h1>Платежи</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
+  $('#main').innerHTML = `<div class="head"><h1>Обороты ДДС</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
   <div class="toolbar"><label class="small muted">с</label><input type="date" id="ff" value="${from}"><label class="small muted">по</label><input type="date" id="ft" value="${to}">
     <select id="fd"><option value="">Приход и расход</option><option value="in" ${dir==='in'?'selected':''}>Приход</option><option value="out" ${dir==='out'?'selected':''}>Расход</option></select>
     <select id="fa">${opts(C.accounts, acc, 'Все счета')}</select><button id="fgo">Показать</button></div>
@@ -842,7 +840,7 @@ async function viewMoney(){
     q(sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')))]);
   const months = {}; pays.forEach(p => { const k = p.pay_date.slice(0,7); months[k] = months[k] || {in:0,out:0}; months[k][p.direction] += +p.amount; });
   const byItem = {}; pays.filter(p=>p.direction==='out').forEach(p => byItem[p.expense_items?.name||'Без статьи'] = (byItem[p.expense_items?.name||'Без статьи']||0) + +p.amount);
-  $('#main').innerHTML = `<div class="head"><h1>Остатки денег</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
+  $('#main').innerHTML = `<div class="head"><h1>Аналитика денег</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
   <div class="cards">${bal.map(b => `<div class="card"><div class="l">${esc(b.name)}</div><div class="v ${b.balance<0?'red':''}">${money(b.balance)}</div><div class="s">приход ${money(b.total_in)} · расход ${money(b.total_out)}</div></div>`).join('')}
     <div class="card"><div class="l">Всего</div><div class="v">${money(sum(bal,b=>b.balance))}</div></div></div>
   <div class="grid g2"><div class="panel"><h2>Движение денег по месяцам, ${new Date().getFullYear()}</h2>
