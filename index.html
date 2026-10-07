@@ -133,9 +133,6 @@ tfoot td{font-weight:600;background:#fafbfd}
   </header>
   <nav id="nav">
     <a href="#/dashboard">Показатели</a>
-    <div class="grp">Закупки</div>
-    <a href="#/docs/purchase">Приёмки</a>
-    <a href="#/docs/supplier_return">Возвраты поставщикам</a>
     <div class="grp">Продажи</div>
     <a href="#/docs/order">Заказы покупателей</a>
     <a href="#/docs/sale">Отгрузки</a>
@@ -418,7 +415,7 @@ async function viewProducts(_, params){
         <td class="small">${esc(p.serial)}</td><td class="n">${num(p.stock)}</td><td class="n">${p.reserved?num(p.reserved):''}</td>
         <td class="n">${p.avg_cost?money(p.avg_cost):''}</td><td class="n">${p.sale_price?money(p.sale_price):''}</td>
         <td class="n">${p.days_in_stock!=null ? (p.days_in_stock>=STALE_DAYS?`<span class="badge b-old">${p.days_in_stock}</span>`:p.days_in_stock) : ''}</td></tr>`).join('')}
-      </tbody></table></div><p class="small muted">Показано: ${rows.length}</p>` : `<div class="panel empty">Товаров не найдено. Товар вносится через «Оприходование» или «Приёмки».</div>`;
+      </tbody></table></div><p class="small muted">Показано: ${rows.length}</p>` : `<div class="panel empty">Товаров не найдено. Товар вносится через «Оприходование».</div>`;
     $$('#plist tr.click').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.id));
   };
   $('#pq').oninput = debounce(e => { st.q = e.target.value; draw(); }, 150);
