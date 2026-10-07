@@ -399,7 +399,7 @@ async function viewProducts(_, params){
   await loadProducts();
   const st = { q: params.get('q')||'', cat:'', only:'all', arch:false };
   $('#main').innerHTML = `
-  <div class="head"><h1>Товары</h1><div class="sp"></div><button onclick="exportCSV('products')">Экспорт CSV</button><button class="primary" onclick="go('#/product/new')">+ Товар</button></div>
+  <div class="head"><h1>Товары</h1><div class="sp"></div><button onclick="exportCSV('products')">Экспорт CSV</button></div>
   <div class="toolbar">
     <input id="pq" placeholder="Название, код, серийный номер, штрихкод" value="${esc(st.q)}" style="flex:1;max-width:420px">
     <select id="pc">${opts(C.categories,'','Все категории')}</select>
@@ -418,7 +418,7 @@ async function viewProducts(_, params){
         <td class="small">${esc(p.serial)}</td><td class="n">${num(p.stock)}</td><td class="n">${p.reserved?num(p.reserved):''}</td>
         <td class="n">${p.avg_cost?money(p.avg_cost):''}</td><td class="n">${p.sale_price?money(p.sale_price):''}</td>
         <td class="n">${p.days_in_stock!=null ? (p.days_in_stock>=STALE_DAYS?`<span class="badge b-old">${p.days_in_stock}</span>`:p.days_in_stock) : ''}</td></tr>`).join('')}
-      </tbody></table></div><p class="small muted">Показано: ${rows.length}</p>` : `<div class="panel empty">Товаров не найдено. Товар создаётся кнопкой «+ Товар» или прямо в приёмке.</div>`;
+      </tbody></table></div><p class="small muted">Показано: ${rows.length}</p>` : `<div class="panel empty">Товаров не найдено. Товар вносится через «Оприходование» или «Приёмки».</div>`;
     $$('#plist tr.click').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.id));
   };
   $('#pq').oninput = debounce(e => { st.q = e.target.value; draw(); }, 150);
