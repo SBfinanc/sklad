@@ -350,7 +350,7 @@ async function viewDashboard(_, params){
     q(sb.from('v_counterparty_balances').select('balance')),
     qAll(() => sb.from('v_loss_lines').select('loss').gte('doc_date',from).lte('doc_date',to).order('document_id').order('product_id')),
   ]);
-  const revenue = sum(lines, x=>x.revenue), gross = sum(lines, x=>x.profit), lossSum = sum(losses, x=>x.loss);
+  const revenue = sum(lines, x=>x.revenue), gross = sum(lines, x=>x.profit), cogs = sum(lines, x=>x.cost), lossSum = sum(losses, x=>x.loss);
   const opex = sum(pays.filter(p => p.direction==='out' && !OPEX_EXCLUDE.includes(p.expense_items?.name)), p=>p.amount);
   const soldQty = sum(lines, x=>x.qty);
   const saleDocs = new Set(lines.filter(x=>x.type==='sale').map(x=>x.document_id)).size;
@@ -364,17 +364,17 @@ async function viewDashboard(_, params){
     <button id="dgo">Показать</button></div>
   <div class="cards">
     <div class="card"><div class="l">Выручка</div><div class="v">${money(revenue)}</div><div class="s">${saleDocs} отгрузок · ${num(soldQty)} шт</div></div>
-    <div class="card"><div class="l">Валовая прибыль</div><div class="v ${gross>=0?'green':'red'}">${money(gross)}</div><div class="s">маржа ${pct(revenue? gross/revenue : 0)}</div></div>
+    <div class="card"><div class="l">Себестоимость проданного товара</div><div class="v">${money(cogs)}</div><div class="s">по партиям, за период</div></div>
     <div class="card"><div class="l">Операционные расходы</div><div class="v">${money(opex)}</div><div class="s">аренда, реклама, доставка и др.</div></div>
     <div class="card"><div class="l">Потери от списаний</div><div class="v ${lossSum>0?'red':''}">${money(lossSum)}</div><div class="s">списания и убыток при возврате поставщику</div></div>
     <div class="card"><div class="l">Чистая прибыль</div><div class="v ${gross-opex-lossSum>=0?'green':'red'}">${money(gross-opex-lossSum)}</div><div class="s">прибыль минус расходы и потери</div></div>
   </div>
   <div class="cards">
-    <div class="card"><div class="l">На складе</div><div class="v">${num(sum(inStock,p=>p.stock))} шт</div><div class="s">${inStock.length} позиций · в резерве ${num(sum(stock,p=>p.reserved))}</div></div>
     <div class="card"><div class="l">Склад по себестоимости</div><div class="v">${money(sum(inStock,p=>p.stock_value))}</div><div class="s">деньги в товаре</div></div>
-    <div class="card"><div class="l">Залежалось > ${STALE_DAYS} дней</div><div class="v ${stale.length?'red':''}">${stale.length} поз.</div><div class="s"><a href="#/reports/stale">${money(sum(stale,p=>p.stock_value))} в товаре</a></div></div>
     <div class="card"><div class="l">Деньги на счетах</div><div class="v">${money(sum(bal,b=>b.balance))}</div><div class="s">${bal.map(b=>esc(b.name)+': '+money(b.balance)).join(' · ')}</div></div>
     <div class="card"><div class="l">Долги</div><div class="v small" style="font-size:15px;margin-top:6px">Нам должны: ${money(owe)}<br>Мы должны: ${money(weOwe)}</div></div>
+    <div class="card"><div class="l">Валовая прибыль</div><div class="v ${gross>=0?'green':'red'}">${money(gross)}</div><div class="s">маржа ${pct(revenue? gross/revenue : 0)}</div></div>
+    <div class="card"><div class="l">Залежалось > ${STALE_DAYS} дней</div><div class="v ${stale.length?'red':''}">${stale.length} поз.</div><div class="s"><a href="#/reports/stale">${money(sum(stale,p=>p.stock_value))} в товаре</a></div></div>
   </div>
   <div class="grid g2">
     <div class="panel"><h2>Продажи и прибыль по дням</h2><div class="chart"><canvas id="ch1"></canvas></div></div>
