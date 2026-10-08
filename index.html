@@ -709,6 +709,12 @@ async function viewDoc(id, type){
       account_id: +$('#pnaccsel').value, item_id: C.items.find(x => x.name===itemName)?.id, counterparty_id: +$('[name=counterparty_id]').value || null, document_id: docId }));
   };
 
+  const needChannel = () => {
+    const s = $('#dhead [name=channel_id]');
+    if (!s || s.value) return true;
+    toast('Укажите канал продажи', true); s.focus(); return false;
+  };
+
   bindPayDel();
   const acts = $('#dacts');
   const btn = (txt, cls, fn) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls;
@@ -716,7 +722,7 @@ async function viewDoc(id, type){
   if (type==='order'){
     if (d.status==='draft'){
       btn('Сохранить', '', async () => { const nid = await save(); toast('Сохранено'); id ? route() : go('#/doc/'+nid); });
-      btn('В резерв', 'primary', async () => { const nid = await save();
+      btn('В резерв', 'primary', async () => { if (!needChannel()) return; const nid = await save();
         const { error } = await sb.rpc('reserve_order', { p_doc:nid });
         if (error){ toast(error.message, true); if (!id) go('#/doc/'+nid); return; }
         toast('Товар зарезервирован'); id ? route() : go('#/doc/'+nid); });
@@ -730,6 +736,7 @@ async function viewDoc(id, type){
   } else if (d.status==='draft'){
     btn('Сохранить', '', async () => { const nid = await save(); toast('Сохранено как черновик'); id ? route() : go('#/doc/'+nid); });
     btn('Провести', 'primary', async () => {
+      if (!needChannel()) return;
       if (['purchase','enter'].includes(type) && items.some(i => !(i.price > 0)) && !(await confirmBox('В документе есть позиции с ценой 0, это снизит себестоимость остатка. Провести всё равно?'))) return;
       if (type==='sale'){
         const low = items.map(i => ({ i, p: prod(i.product_id) })).filter(({i,p}) => (p.min_price && i.price < p.min_price) || i.price < Math.round(p.avg_cost||0));
