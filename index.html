@@ -107,6 +107,7 @@ tfoot td{font-weight:600;background:#fafbfd}
   #app{display:block;height:auto} #main{overflow:visible;padding:0}
   .panel,.tw{border:0} body{background:#fff}
 }
+tr.voided td{color:#999;text-decoration:line-through}tr.voided td a{color:#999}tr.voided .pos,tr.voided .neg{color:#999}.vnote{display:block;text-decoration:none;color:#b45309;font-size:11px}
 </style>
 </head>
 <body>
@@ -342,7 +343,7 @@ async function viewDashboard(_, params){
   const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd();
   const [lines, pays, stock, bal, recent, cpb, losses] = await Promise.all([
     qAll(() => sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to).order('doc_date').order('document_id').order('product_id')),
-    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date',from).lte('pay_date',to).order('id')),
+    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').is('voided_at',null).gte('pay_date',from).lte('pay_date',to).order('id')),
     loadProducts(),
     q(sb.from('v_account_balances').select('*').order('sort')),
     q(sb.from('v_doc_totals').select('*').order('created_at',{ascending:false}).limit(8)),
@@ -750,7 +751,7 @@ async function viewDoc(id, type){
     await q(sb.from('documents').delete().eq('id',id)); toast('Удалено'); go('#/docs/'+type); });
 
   if ($('#addpay')) $('#addpay').onclick = () => payModal({ direction: ['sale','supplier_return'].includes(type)?'in':'out',
-    amount: Math.max(0, total() - Math.abs(sum(pays,p=>p.amount))), counterparty_id: d.counterparty_id, document_id: id,
+    amount: Math.max(0, total() - Math.abs(sum(pays.filter(p=>!p.voided_at),p=>p.amount))), counterparty_id: d.counterparty_id, document_id: id,
     itemName: {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю'}[type] }, route);
   window.onbeforeunload = () => dirty ? true : null;
 }
@@ -808,12 +809,12 @@ async function viewCounterparty(id){
 function payTable(rows){
   if (!rows.length) return '<div class="empty">Платежей нет</div>';
   return `<div class="tw"><table><thead><tr><th>Дата</th><th>Тип</th><th>Статья</th><th>Счёт</th><th>Контрагент</th><th>Документ</th><th class="n">Сумма</th><th>Внёс</th><th>Комментарий</th><th class="noprint"></th></tr></thead><tbody>
-  ${rows.map(p => `<tr><td>${fdate(p.pay_date)}</td><td>${p.direction==='in'?'<span class="pos">Приход</span>':'<span class="neg">Расход</span>'}</td><td>${esc(p.expense_items?.name)}</td><td>${esc(p.accounts?.name)}</td>
+  ${rows.map(p => `<tr${p.voided_at?' class="voided"':''}><td>${fdate(p.pay_date)}</td><td>${p.direction==='in'?'<span class="pos">Приход</span>':'<span class="neg">Расход</span>'}</td><td>${esc(p.expense_items?.name)}</td><td>${esc(p.accounts?.name)}</td>
     <td>${esc(p.counterparties?.name)}</td><td>${p.documents ? `<a href="#/doc/${p.document_id}">${esc(p.documents.number)}</a>` : ''}</td>
-    <td class="n ${p.direction==='in'?'pos':'neg'}">${p.direction==='in'?'+':'−'}${money(p.amount)}</td><td class="small">${esc(p.created_by)}</td><td class="small muted">${esc(p.comment)}</td>
-    <td class="noprint"><button class="link" data-pdel="${p.id}" title="Удалить">✕</button></td></tr>`).join('')}</tbody></table></div>`;
+    <td class="n ${p.direction==='in'?'pos':'neg'}">${p.direction==='in'?'+':'−'}${money(p.amount)}</td><td class="small">${esc(p.created_by)}</td><td class="small muted">${esc(p.comment)}${p.voided_at?`<span class="vnote">Аннулирован: ${esc(p.voided_by)||''}, ${new Date(p.voided_at).toLocaleDateString('ru-RU',{timeZone:'Asia/Almaty'})}</span>`:''}</td>
+    <td class="noprint">${p.voided_at?'':`<button class="link" data-pdel="${p.id}" title="Аннулировать">✕</button>`}</td></tr>`).join('')}</tbody></table></div>`;
 }
-function bindPayDel(){ $$('[data-pdel]').forEach(b => b.onclick = async () => { if (await confirmBox('Удалить платёж?')){ await q(sb.from('payments').delete().eq('id',b.dataset.pdel)); toast('Удалено'); route(); } }); }
+function bindPayDel(){ $$('[data-pdel]').forEach(b => b.onclick = async () => { if (await confirmBox('Аннулировать запись? Она останется в списке, но в расчёты не попадёт. Вернуть её будет нельзя.')){ await q(sb.from('payments').update({voided_at:new Date().toISOString()}).eq('id',b.dataset.pdel)); toast('Аннулировано'); route(); } }); }
 function payModal(pre={}, cb){
   const dir = pre.direction || 'out';
   modal(`<h2>${dir==='in'?'Приход денег':'Расход денег'}</h2><div id="pyf" class="grid g2">
@@ -838,7 +839,8 @@ async function viewPayments(_, params){
   let qr = sb.from('payments').select('*, accounts(name), expense_items(name), counterparties(name), documents(number,type)').gte('pay_date',from).lte('pay_date',to).order('pay_date',{ascending:false}).order('id',{ascending:false});
   if (dir) qr = qr.eq('direction',dir); if (acc) qr = qr.eq('account_id',acc);
   const rows = await q(qr);
-  const inS = sum(rows.filter(p=>p.direction==='in'),p=>p.amount), outS = sum(rows.filter(p=>p.direction==='out'),p=>p.amount);
+  const live = rows.filter(p=>!p.voided_at);
+  const inS = sum(live.filter(p=>p.direction==='in'),p=>p.amount), outS = sum(live.filter(p=>p.direction==='out'),p=>p.amount);
   $('#main').innerHTML = `<div class="head"><h1>Обороты ДДС</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
   <div class="toolbar"><label class="small muted">с</label><input type="date" id="ff" value="${from}"><label class="small muted">по</label><input type="date" id="ft" value="${to}">
     <select id="fd"><option value="">Приход и расход</option><option value="in" ${dir==='in'?'selected':''}>Приход</option><option value="out" ${dir==='out'?'selected':''}>Расход</option></select>
@@ -851,7 +853,7 @@ async function viewPayments(_, params){
 }
 async function viewMoney(){
   const [bal, pays] = await Promise.all([q(sb.from('v_account_balances').select('*').order('sort')),
-    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')).order('id'))]);
+    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').is('voided_at',null).gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')).order('id'))]);
   const months = {}; pays.forEach(p => { const k = p.pay_date.slice(0,7); months[k] = months[k] || {in:0,out:0}; months[k][p.direction] += +p.amount; });
   const byItem = {}; pays.filter(p=>p.direction==='out').forEach(p => byItem[p.expense_items?.name||'Без статьи'] = (byItem[p.expense_items?.name||'Без статьи']||0) + +p.amount);
   $('#main').innerHTML = `<div class="head"><h1>Аналитика денег</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
