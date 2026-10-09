@@ -61,6 +61,7 @@ label.f{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
 .v.green{color:var(--green)} .v.red{color:var(--red)}
 /* tables */
 .tw{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+.tw.scroll{max-height:440px}
 table{border-collapse:collapse;width:100%}
 th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
 th{background:#f7f9fc;font-weight:600;font-size:12.5px;color:#46506a;position:sticky;top:0;z-index:1;white-space:nowrap}
@@ -341,12 +342,11 @@ $('#gsearch').addEventListener('keydown', e => { if (e.key==='Enter' && e.target
 /* ---------- Показатели ---------- */
 async function viewDashboard(_, params){
   const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd();
-  const [lines, pays, stock, bal, recent, cpb, losses] = await Promise.all([
+  const [lines, pays, stock, bal, cpb, losses] = await Promise.all([
     qAll(() => sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to).order('doc_date').order('document_id').order('product_id')),
     qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').is('voided_at',null).gte('pay_date',from).lte('pay_date',to).order('id')),
     loadProducts(),
     q(sb.from('v_account_balances').select('*').order('sort')),
-    q(sb.from('v_doc_totals').select('*').order('created_at',{ascending:false}).limit(8)),
     q(sb.from('v_counterparty_balances').select('balance')),
     qAll(() => sb.from('v_loss_lines').select('loss').gte('doc_date',from).lte('doc_date',to).order('document_id').order('product_id')),
   ]);
@@ -380,11 +380,41 @@ async function viewDashboard(_, params){
     <div class="panel"><h2>Продажи и прибыль по дням</h2><div class="chart"><canvas id="ch1"></canvas></div></div>
     <div class="panel"><h2>Прибыль по категориям</h2><div class="chart"><canvas id="ch2"></canvas></div></div>
   </div>
-  <div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Последние документы</h2><div style="flex:1"></div>
-    <button onclick="go('#/doc/new/purchase')">+ Приёмка</button><button class="primary" onclick="go('#/doc/new/sale')">+ Отгрузка</button></div>
-    ${docTable(recent, true)}</div>`;
+  <div class="panel"><h2 style="margin:0 0 8px">Поиск документов</h2>
+    <div class="toolbar">
+      <input id="dq" placeholder="Номер, комментарий, кто создал" style="max-width:260px">
+      <label class="small muted">с</label><input type="date" id="dff">
+      <label class="small muted">по</label><input type="date" id="dft">
+      <select id="dty"><option value="">Все типы</option>${Object.entries(T).map(([k,v]) => `<option value="${k}">${v.one}</option>`).join('')}</select>
+      <select id="dcat">${opts(C.categories,'','Все типы товаров')}</select>
+      <select id="dcp">${opts(C.cps,'','Все контрагенты')}</select>
+      <button id="dreset">Сбросить</button>
+    </div>
+    <div class="small muted" id="dcount" style="margin-bottom:6px"></div>
+    <div id="dlist"></div></div>`;
   $('#dgo').onclick = () => go(`#/dashboard?from=${$('#df').value}&to=${$('#dt').value}`);
-  bindDocRows();
+  let docSeq = 0;
+  const loadDocs = async () => {
+    const my = ++docSeq;
+    const f = $('#dff').value, t = $('#dft').value, ty = $('#dty').value, cp = $('#dcp').value, cat = $('#dcat').value, s = $('#dq').value.trim().toLowerCase();
+    let catDocs = null;
+    if (cat){
+      const li = await qAll(() => sb.from('document_items').select('id,document_id,products!inner(category_id)').eq('products.category_id',cat).order('id'));
+      catDocs = new Set(li.map(x => x.document_id));
+    }
+    let rows = await qAll(() => { let r = sb.from('v_doc_totals').select('*').order('doc_date',{ascending:false}).order('id',{ascending:false});
+      if (f) r = r.gte('doc_date',f); if (t) r = r.lte('doc_date',t); if (ty) r = r.eq('type',ty); if (cp) r = r.eq('counterparty_id',cp); return r; });
+    if (my !== docSeq) return;
+    if (catDocs) rows = rows.filter(d => catDocs.has(d.id));
+    if (s) rows = rows.filter(d => [d.number,d.counterparty,d.comment,d.created_by].some(v => (v||'').toLowerCase().includes(s)));
+    $('#dcount').textContent = rows.length ? `Найдено документов: ${rows.length}. Сумма: ${money(sum(rows, d => d.total))}` : '';
+    $('#dlist').innerHTML = docTable(rows, true, true); bindDocRows();
+  };
+  const loadDocsSoon = debounce(loadDocs, 300);
+  ['dff','dft','dty','dcat','dcp'].forEach(id => $('#'+id).onchange = loadDocs);
+  $('#dq').oninput = loadDocsSoon;
+  $('#dreset').onclick = () => { ['dq','dff','dft','dty','dcat','dcp'].forEach(id => $('#'+id).value = ''); loadDocs(); };
+  loadDocs();
   const days = {}; for (let d = new Date(from); d <= new Date(to); d.setDate(d.getDate()+1)) days[d.toLocaleDateString('sv')] = {r:0,p:0};
   lines.forEach(x => { if (days[x.doc_date]){ days[x.doc_date].r += +x.revenue; days[x.doc_date].p += +x.profit; } });
   const keys = Object.keys(days);
@@ -532,9 +562,9 @@ async function viewStock(){
 }
 
 /* ---------- Документы: список ---------- */
-function docTable(rows, showType){
+function docTable(rows, showType, scroll){
   if (!rows.length) return '<div class="empty">Документов нет</div>';
-  return `<div class="tw"><table><thead><tr><th>№</th>${showType?'<th>Тип</th>':''}<th>Дата</th><th>Контрагент</th><th>Статус</th><th class="n">Позиций</th><th class="n">Сумма</th><th class="n">Оплачено</th><th>Создал</th><th>Комментарий</th></tr></thead><tbody>
+  return `<div class="tw${scroll?' scroll':''}"><table><thead><tr><th>№</th>${showType?'<th>Тип</th>':''}<th>Дата</th><th>Контрагент</th><th>Статус</th><th class="n">Позиций</th><th class="n">Сумма</th><th class="n">Оплачено</th><th>Создал</th><th>Комментарий</th></tr></thead><tbody>
   ${rows.map(d => `<tr class="click" data-doc="${d.id}"><td>${esc(d.number)}</td>${showType?`<td>${T[d.type].one}</td>`:''}<td>${fdate(d.doc_date)}</td><td>${esc(d.counterparty)}</td><td>${badge(d.status,d.type)}</td>
     <td class="n">${d.lines}</td><td class="n">${money(d.total)}</td><td class="n">${d.paid?money(Math.abs(d.paid)):''}</td><td class="small">${esc(d.created_by)}</td><td class="small muted">${esc(d.comment)}</td></tr>`).join('')}
   </tbody>${showType?'':`<tfoot><tr><td colspan="5">Итого</td><td class="n">${sum(rows,d=>d.lines)}</td><td class="n">${money(sum(rows,d=>d.total))}</td><td class="n">${money(sum(rows,d=>Math.abs(d.paid)))}</td><td colspan="2"></td></tr></tfoot>`}</table></div>`;
