@@ -155,6 +155,7 @@ tr.voided td{color:#999;text-decoration:line-through}tr.voided td a{color:#999}t
     <a href="#/reports/stale">Залежавшийся товар</a>
     <div class="grp">Настройки</div>
     <a href="#/settings">Справочники</a>
+    <a href="#/audit">Журнал действий</a>
   </nav>
   <main id="main"></main>
 </div>
@@ -193,6 +194,7 @@ const num = v => nf2.format(+v||0);
 const pct = v => (isFinite(v) ? (v*100).toFixed(1).replace('.',',') : '0') + '%';
 const today = () => new Date().toLocaleDateString('sv', { timeZone:'Asia/Almaty' });
 const fdate = s => s ? s.slice(0,10).split('-').reverse().join('.') : '';
+const dtAlm = s => s ? new Date(s).toLocaleString('ru-RU',{timeZone:'Asia/Almaty',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
 const monthStart = (d=new Date()) => new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('sv');
 const monthEnd = (d=new Date()) => new Date(d.getFullYear(), d.getMonth()+1, 0).toLocaleDateString('sv');
 const sum = (a, f) => a.reduce((s,x) => s + (+f(x)||0), 0);
@@ -312,6 +314,7 @@ const routes = [
   [/^\/reports\/turnover$/, viewTurnover],
   [/^\/reports\/stale$/, viewStale],
   [/^\/settings$/, viewSettings],
+  [/^\/audit$/, viewAudit],
   [/^\/search$/, viewSearch],
 ];
 let charts = [];
@@ -468,12 +471,13 @@ async function viewProducts(_, params){
       (st.only==='all' || (st.only==='in' ? p.stock>0 : p.stock<=0)) &&
       (!s || [p.code,p.name,p.serial,p.barcode,p.description,p.location].some(v => (v||'').toLowerCase().includes(s))));
     $('#plist').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Наименование</th><th>Категория</th><th>Состояние</th><th>Серийный №</th>
-      <th class="n">Остаток</th><th class="n">Резерв</th><th class="n">Себестоимость</th><th class="n">Цена продажи</th><th class="n">Дней</th></tr></thead><tbody>
+      <th class="n">Остаток</th><th class="n">Резерв</th><th class="n">Себестоимость</th><th class="n">Цена продажи</th>${st.arch ? '<th>В архиве с</th><th>Кто отправил</th>' : '<th class="n">Дней</th>'}</tr></thead><tbody>
       ${rows.map(p => `<tr class="click" data-id="${p.id}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${esc(p.condition)}</td>
         <td class="small">${esc(p.serial)}</td><td class="n">${num(p.stock)}</td><td class="n">${p.reserved?num(p.reserved):''}</td>
         <td class="n">${p.avg_cost?money(p.avg_cost):''}</td><td class="n">${p.sale_price?money(p.sale_price):''}</td>
-        <td class="n">${p.days_in_stock!=null ? (p.days_in_stock>=STALE_DAYS?`<span class="badge b-old">${p.days_in_stock}</span>`:p.days_in_stock) : ''}</td></tr>`).join('')}
-      </tbody></table></div><p class="small muted">Показано: ${rows.length}</p>` : `<div class="panel empty">Товаров не найдено. Товар вносится через «Оприходование».</div>`;
+        ${st.arch ? `<td class="small">${p.archived_at ? dtAlm(p.archived_at) : '<span class="faint">не записано</span>'}</td><td class="small">${esc(p.archived_by) || '<span class="faint">не записано</span>'}</td>`
+        : `<td class="n">${p.days_in_stock!=null ? (p.days_in_stock>=STALE_DAYS?`<span class="badge b-old">${p.days_in_stock}</span>`:p.days_in_stock) : ''}</td>`}</tr>`).join('')}
+      </tbody></table></div><p class="small muted">Показано: ${rows.length}${st.arch ? '. В архив отправляются только карточки без остатка. До 12.10.2026 кто и когда отправил не записывалось. Полная история в «Журнале действий».' : ''}</p>` : `<div class="panel empty">${st.arch ? 'В архиве пусто.' : 'Товаров не найдено. Товар вносится через «Оприходование».'}</div>`;
     $$('#plist tr.click').forEach(tr => tr.onclick = () => go('#/product/' + tr.dataset.id));
   };
   $('#pq').oninput = debounce(e => { st.q = e.target.value; draw(); }, 150);
@@ -521,7 +525,7 @@ async function viewProduct(id){
   const profit = sum(sales, h => h.qty*h.price - h.qty*(h.unit_cost||0) - h.extra_share);
   $('#main').innerHTML = `
   <div class="head"><a href="#/products">← Товары</a></div>
-  <div class="head"><h1>${isNew ? 'Новый товар' : esc(p.name)}</h1>${!isNew && p.archived ? '<span class="badge b-cancelled">в архиве</span>':''}<div class="sp"></div>
+  <div class="head"><h1>${isNew ? 'Новый товар' : esc(p.name)}</h1>${!isNew && p.archived ? `<span class="badge b-cancelled">в архиве${p.archived_at ? ` с ${dtAlm(p.archived_at)}, ${esc(p.archived_by)}` : ''}</span>`:''}<div class="sp"></div>
     ${isNew ? '' : `<button onclick="go('#/doc/new/sale?product=${p.id}')">Продать</button><button id="arch">${p.archived?'Вернуть из архива':'В архив'}</button><button class="danger" id="pdel">Удалить</button>`}
     <button class="primary" id="psave">Сохранить</button></div>
   ${isNew ? '' : `<div class="cards">
@@ -545,7 +549,11 @@ async function viewProduct(id){
     else { await q(sb.from('products').update(o).eq('id', id)); toast('Сохранено'); route(); }
   };
   if (!isNew){
-    $('#arch').onclick = async () => { await q(sb.from('products').update({archived:!p.archived}).eq('id',id)); route(); };
+    $('#arch').onclick = async () => {
+      if (!p.archived && (p.stock || p.reserved)){
+        toast(`Нельзя отправить в архив: на складе ${num(p.stock)} шт${p.reserved ? `, в резерве ${num(p.reserved)} шт` : ''}. Сначала продайте или спишите остаток.`, true); return; }
+      if (!p.archived && !(await confirmBox('Отправить карточку в архив? Она пропадёт из списков товаров и из подбора в документах. Вернуть можно в любой момент.'))) return;
+      await q(sb.from('products').update({archived:!p.archived}).eq('id',id)); toast(p.archived ? 'Возвращено из архива' : 'Отправлено в архив'); route(); };
     $('#pdel').onclick = async () => {
       if (hist.length){ toast('По товару есть документы. Его можно только отправить в архив.', true); return; }
       if (await confirmBox('Удалить товар?')){ await q(sb.from('products').delete().eq('id',id)); toast('Удалено'); go('#/products'); }
@@ -563,11 +571,11 @@ async function viewStock(){
     <label class="row small"><input type="checkbox" id="sz"> показывать нулевые</label></div><div id="slist"></div>`;
   const draw = () => {
     const s = st.q.toLowerCase();
-    const rows = C.products.filter(p => !p.archived && (st.zero || p.stock>0 || p.reserved>0) && (!st.cat || String(p.category_id)===st.cat) &&
+    const rows = C.products.filter(p => (!p.archived || p.stock>0 || p.reserved>0) && (st.zero || p.stock>0 || p.reserved>0) && (!st.cat || String(p.category_id)===st.cat) &&
       (!s || [p.code,p.name,p.serial,p.location].some(v => (v||'').toLowerCase().includes(s))));
     $('#slist').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th>Код</th><th>Наименование</th><th>Категория</th><th>Место</th><th class="n">Остаток</th><th class="n">Резерв</th><th class="n">Доступно</th>
       <th class="n">Себест. за шт</th><th class="n">Сумма</th><th class="n">Цена продажи</th><th class="n">Дней</th></tr></thead><tbody>
-      ${rows.map(p => `<tr class="click" data-id="${p.id}"><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td class="small">${esc(p.location)}</td>
+      ${rows.map(p => `<tr class="click" data-id="${p.id}"><td>${esc(p.code)}</td><td>${esc(p.name)}${p.archived ? ' <span class="badge b-cancelled" title="Карточка в архиве, но остаток есть. Верните её из архива или спишите остаток.">в архиве</span>' : ''}</td><td>${esc(p.category)}</td><td class="small">${esc(p.location)}</td>
       <td class="n">${num(p.stock)}</td><td class="n">${p.reserved?num(p.reserved):''}</td><td class="n">${num(p.available)}</td><td class="n">${money(p.avg_cost)}</td>
       <td class="n">${money(p.stock_value)}</td><td class="n">${p.sale_price?money(p.sale_price):''}</td>
       <td class="n">${p.days_in_stock!=null ? (p.days_in_stock>=STALE_DAYS?`<span class="badge b-old">${p.days_in_stock}</span>`:p.days_in_stock):''}</td></tr>`).join('')}</tbody>
@@ -705,7 +713,7 @@ async function viewDoc(id, type){
       const s = inp.value.trim().toLowerCase();
       if (!s){ dd.classList.add('hidden'); return; }
       const outgoing = T[type].sign < 0 || type==='order';
-      found = C.products.filter(p => !p.archived && [p.code,p.name,p.serial,p.barcode].some(v => (v||'').toLowerCase().includes(s))).slice(0,30);
+      found = C.products.filter(p => (!p.archived || p.stock>0) && [p.code,p.name,p.serial,p.barcode].some(v => (v||'').toLowerCase().includes(s))).slice(0,30);
       dd.innerHTML = found.length ? found.map((p,k) => `<div data-k="${k}" class="${k===act?'act':''}"><b>${esc(p.code)}</b> ${esc(p.name)} <span class="small faint">${p.serial?'S/N '+esc(p.serial)+' · ':''}${outgoing ? 'доступно '+num(p.available) : 'остаток '+num(p.stock)}</span></div>`).join('')
         : `<div class="faint">Ничего не найдено${['purchase','enter'].includes(type)?'. Нажмите «+ Новый товар»':''}</div>`;
       dd.classList.remove('hidden');
@@ -945,7 +953,7 @@ async function viewInventory(){
     <label class="row small"><input type="checkbox" id="iz"> включая нулевые остатки</label><div style="flex:1"></div><button class="primary" id="igo">Провести инвентаризацию</button></div><div id="ilist"></div>`;
   const fact = {};
   const draw = () => { const cat = $('#ic').value, s = $('#iq').value.toLowerCase(), z = $('#iz').checked;
-    const rows = C.products.filter(p => !p.archived && (z || p.stock>0) && (!cat || String(p.category_id)===cat) && (!s || [p.code,p.name,p.serial,p.location].some(v=>(v||'').toLowerCase().includes(s))));
+    const rows = C.products.filter(p => (!p.archived || p.stock>0) && (z || p.stock>0) && (!cat || String(p.category_id)===cat) && (!s || [p.code,p.name,p.serial,p.location].some(v=>(v||'').toLowerCase().includes(s))));
     $('#ilist').innerHTML = rows.length ? `<div class="tw items"><table><thead><tr><th>Код</th><th>Наименование</th><th>Место</th><th class="n">По учёту</th><th class="n" style="width:110px">Факт</th><th class="n">Разница</th></tr></thead><tbody>
       ${rows.map(p => { const f = fact[p.id]; const diff = f==null ? null : f - p.stock; return `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}<div class="small faint">${esc(p.serial)}</div></td><td class="small">${esc(p.location)}</td>
       <td class="n">${num(p.stock)}</td><td class="n"><input type="number" min="0" step="1" data-id="${p.id}" value="${f ?? ''}" placeholder="${num(p.stock)}" style="text-align:right"></td>
@@ -1041,6 +1049,53 @@ async function viewSearch(_, params){
 }
 
 /* ---------- Настройки ---------- */
+/* ---------- Журнал действий ---------- */
+async function viewAudit(_, params){
+  const d30 = new Date(Date.now() - 30*864e5).toLocaleDateString('sv', {timeZone:'Asia/Almaty'});
+  const from = params.get('from') || d30, to = params.get('to') || new Date().toLocaleDateString('sv', {timeZone:'Asia/Almaty'});
+  const ent = params.get('ent') || '';
+  const toNext = new Date(new Date(to + 'T00:00:00+05:00').getTime() + 864e5).toISOString();
+  const [rows, members] = await Promise.all([
+    qAll(() => { let r = sb.from('audit_log').select('*').gte('at', new Date(from + 'T00:00:00+05:00').toISOString()).lt('at', toNext).order('at',{ascending:false}).order('id',{ascending:false});
+      if (ent) r = r.eq('entity', ent); return r; }),
+    q(sb.from('members').select('name').order('name')),
+  ]);
+  const actors = [...new Set([...members.map(m => m.name), ...rows.map(r => r.actor)])];
+  const actions = [...new Set(rows.map(r => r.action))].sort();
+  const ENT = { document:'Документы', payment:'Деньги', product:'Товарные карточки', counterparty:'Контрагенты' };
+  $('#main').innerHTML = `<div class="head"><h1>Журнал действий</h1><div class="sp"></div><button onclick="print()">Печать</button></div>
+  <div class="panel small muted">Здесь автоматически записывается, кто и когда создал, провёл, отменил или удалил документ, внёс или аннулировал платёж, создал, изменил или отправил в архив карточку товара. Записи нельзя изменить или удалить. Действия до 12.10.2026 восстановлены по данным документов и платежей.</div>
+  <div class="toolbar"><label class="small muted">с</label><input type="date" id="af" value="${from}"><label class="small muted">по</label><input type="date" id="at" value="${to}">
+    <select id="ae"><option value="">Все разделы</option>${Object.entries(ENT).map(([k,v]) => `<option value="${k}" ${k===ent?'selected':''}>${v}</option>`).join('')}</select>
+    <button id="ago">Показать</button></div>
+  <div class="toolbar"><select id="aw"><option value="">Все сотрудники</option>${actors.map(a => `<option>${esc(a)}</option>`).join('')}</select>
+    <select id="aa"><option value="">Все действия</option>${actions.map(a => `<option>${esc(a)}</option>`).join('')}</select>
+    <input id="aq" placeholder="Номер документа, товар, статья, комментарий" style="max-width:320px"></div>
+  <div class="small muted" id="acount" style="margin-bottom:6px"></div><div id="alist"></div>`;
+  const link = r => {
+    const label = (r.doc_type && T[r.doc_type] ? T[r.doc_type].one + ' ' : '') + (r.ref || '');
+    if (r.action.startsWith('Удалил')) return esc(label);
+    if (r.entity==='document') return `<a href="#/doc/${r.entity_id}">${esc(label)}</a>`;
+    if (r.entity==='product') return `<a href="#/product/${r.entity_id}">${esc(label)}</a>`;
+    if (r.entity==='counterparty') return `<a href="#/counterparty/${r.entity_id}">${esc(label)}</a>`;
+    return esc(label);
+  };
+  const draw = () => {
+    const w = $('#aw').value, a = $('#aa').value, s = $('#aq').value.trim().toLowerCase();
+    const list = rows.filter(r => (!w || r.actor===w) && (!a || r.action===a) && (!s || [r.ref, r.details, r.action].some(v => (v||'').toLowerCase().includes(s))));
+    const per = {}; list.forEach(r => per[r.actor] = (per[r.actor]||0) + 1);
+    $('#acount').textContent = list.length ? `Записей: ${list.length}. ` + Object.entries(per).map(([k,v]) => `${k}: ${v}`).join(', ') : '';
+    $('#alist').innerHTML = list.length ? `<div class="tw" style="max-height:640px"><table><thead><tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Раздел</th><th>Объект</th><th class="n">Кол-во</th><th class="n">Сумма</th><th>Подробности</th></tr></thead><tbody>
+      ${list.map(r => `<tr><td class="small" style="white-space:nowrap">${dtAlm(r.at)}</td><td>${esc(r.actor)}</td><td>${esc(r.action)}</td><td class="small muted">${ENT[r.entity]}</td><td>${link(r)}</td>
+      <td class="n">${r.qty!=null ? num(r.qty) : ''}</td><td class="n">${r.amount!=null ? money(r.amount) : ''}</td><td class="small muted">${esc(r.details)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="panel empty">За выбранный период действий нет</div>';
+  };
+  ['aw','aa'].forEach(id => $('#'+id).onchange = draw); $('#aq').oninput = debounce(draw, 200);
+  $('#ago').onclick = () => go(`#/audit?from=${$('#af').value}&to=${$('#at').value}&ent=${$('#ae').value}`);
+  $('#ae').onchange = () => $('#ago').click();
+  draw();
+}
+
 async function viewSettings(){
   const members = await q(sb.from('members').select('*'));
   const sections = [['categories','Категории товаров'],['channels','Каналы продаж'],['accounts','Счета (кассы)'],['expense_items','Статьи доходов и расходов']];
