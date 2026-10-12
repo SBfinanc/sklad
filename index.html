@@ -53,6 +53,8 @@ h2{font-size:15px;font-weight:600;margin:0 0 10px}
 .toolbar input[type=checkbox]{min-width:0}
 .grid{display:grid;gap:12px}
 .g2{grid-template-columns:repeat(2,minmax(0,1fr))} .g3{grid-template-columns:repeat(3,minmax(0,1fr))} .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.chgrid{grid-template-columns:1fr;align-items:start}
+@media (min-width:1280px){.chgrid{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}}
 label.f{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
 .field{min-width:0}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
@@ -357,6 +359,11 @@ async function viewDashboard(_, params){
   const inStock = stock.filter(p => p.stock > 0);
   const stale = inStock.filter(p => p.days_in_stock >= STALE_DAYS);
   const owe = sum(cpb.filter(x=>x.balance>0), x=>x.balance), weOwe = -sum(cpb.filter(x=>x.balance<0), x=>x.balance);
+  const byCh = {};
+  lines.forEach(x => { const k = x.channel || 'Не указан';
+    const c = byCh[k] = byCh[k] || { name:k, sales:new Set(), returns:new Set(), revenue:0, profit:0 };
+    (x.type==='sale' ? c.sales : c.returns).add(x.document_id); c.revenue += +x.revenue; c.profit += +x.profit; });
+  const chRows = Object.values(byCh).map(c => ({ ...c, sales:c.sales.size, returns:c.returns.size })).sort((a,b) => b.revenue - a.revenue);
   $('#main').innerHTML = `
   <div class="head"><h1>Показатели</h1><div class="sp"></div>
     <label class="small muted">с</label><input type="date" id="df" value="${from}" style="width:auto">
@@ -376,6 +383,16 @@ async function viewDashboard(_, params){
     <div class="card"><div class="l">Валовая прибыль</div><div class="v ${gross>=0?'green':'red'}">${money(gross)}</div><div class="s">маржа ${pct(revenue? gross/revenue : 0)}</div></div>
     <div class="card"><div class="l">Залежалось > ${STALE_DAYS} дней</div><div class="v ${stale.length?'red':''}">${stale.length} поз.</div><div class="s"><a href="#/reports/stale">${money(sum(stale,p=>p.stock_value))} в товаре</a></div></div>
   </div>
+  <div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Каналы продаж</h2><div style="flex:1"></div>
+    <a class="small" href="#/reports/profit?from=${from}&to=${to}&by=channel">Подробнее в отчёте</a></div>
+    ${chRows.length ? `<div class="grid chgrid">
+    <div class="tw"><table><thead><tr><th>Канал</th><th class="n">Продаж</th><th class="n">Выручка</th><th class="n">Доля</th><th class="n">Прибыль</th><th class="n">Маржа</th><th class="n">Средний чек</th></tr></thead><tbody>
+    ${chRows.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${c.sales}${c.returns ? ` <span class="small faint">(возвр. ${c.returns})</span>` : ''}</td><td class="n">${money(c.revenue)}</td>
+      <td class="n">${pct(revenue ? c.revenue/revenue : 0)}</td><td class="n ${c.profit>=0?'pos':'neg'}">${money(c.profit)}</td>
+      <td class="n">${pct(c.revenue ? c.profit/c.revenue : 0)}</td><td class="n">${c.sales ? money(c.revenue/c.sales) : '-'}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Итого</td><td class="n">${saleDocs}</td><td class="n">${money(revenue)}</td><td class="n">${revenue ? '100%' : '-'}</td><td class="n">${money(gross)}</td>
+      <td class="n">${pct(revenue ? gross/revenue : 0)}</td><td class="n">${saleDocs ? money(revenue/saleDocs) : '-'}</td></tr></tfoot></table></div>
+    <div class="chart"><canvas id="ch3"></canvas></div></div>` : '<div class="empty">За период продаж нет</div>'}</div>
   <div class="grid g2">
     <div class="panel"><h2>Продажи и прибыль по дням</h2><div class="chart"><canvas id="ch1"></canvas></div></div>
     <div class="panel"><h2>Прибыль по категориям</h2><div class="chart"><canvas id="ch2"></canvas></div></div>
@@ -426,6 +443,9 @@ async function viewDashboard(_, params){
     const ck = Object.keys(bc).sort((a,b)=>bc[b]-bc[a]);
     charts.push(new Chart($('#ch2'), { type:'bar', data:{ labels:ck, datasets:[{label:'Прибыль',data:ck.map(k=>bc[k]),backgroundColor:'#1e5aa8'}]},
       options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>nf.format(v)}}}}}));
+    if ($('#ch3')) charts.push(new Chart($('#ch3'), { type:'bar', data:{ labels:chRows.map(c=>c.name),
+      datasets:[{label:'Выручка',data:chRows.map(c=>c.revenue),backgroundColor:'#9dbbe6'},{label:'Прибыль',data:chRows.map(c=>c.profit),backgroundColor:'#178a4c'}]},
+      options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{x:{ticks:{callback:v=>nf.format(v)}}}}}));
   }
 }
 
