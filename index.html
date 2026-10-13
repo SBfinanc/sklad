@@ -178,6 +178,9 @@ const T = {
   enter:{one:'Оприходование',many:'Оприходования',cp:null,extra:'Накладные расходы',price:'Себестоимость за шт',sign:1},
   writeoff:{one:'Списание',many:'Списания',cp:null,extra:null,price:'Оценка за шт',sign:-1},
 };
+const SRC = {bought:'Куплено за деньги', founder:'Внесено учредителем', opening:'Остаток на начало или излишек'};
+const memName = email => (C.members || []).find(m => m.email === email)?.name || email || '';
+const srcLine = d => d.type !== 'enter' ? '' : `<div class="small faint">${d.source==='founder' ? 'взнос: ' + esc(memName(d.founder_email)) : d.source==='bought' ? 'куплено за деньги' : d.source==='opening' ? 'остаток на начало' : 'источник не указан'}</div>`;
 const STATUS = {draft:'Черновик',posted:'Проведён',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
 const ORDER_STATUS = {draft:'Новый',reserved:'В резерве',done:'Выполнен',cancelled:'Отменён'};
 const CONDITIONS = ['Новый','Б/У','На запчасти'];
@@ -232,14 +235,15 @@ function confirmBox(text){
 /* ---------- справочники в памяти ---------- */
 const C = { categories:[], channels:[], accounts:[], items:[], cps:[], products:[], me:'' };
 async function loadRefs(){
-  const [cat, ch, acc, it, cps] = await Promise.all([
+  const [cat, ch, acc, it, cps, members] = await Promise.all([
     q(sb.from('categories').select('*').order('sort').order('name')),
     q(sb.from('channels').select('*').order('sort').order('name')),
     q(sb.from('accounts').select('*').order('sort').order('name')),
     q(sb.from('expense_items').select('*').order('sort').order('name')),
     q(sb.from('counterparties').select('id,name,kind,phone').order('name')),
+    q(sb.from('members').select('email,name').order('name')),
   ]);
-  Object.assign(C, { categories:cat, channels:ch, accounts:acc, items:it, cps });
+  Object.assign(C, { categories:cat, channels:ch, accounts:acc, items:it, cps, members });
 }
 async function loadProducts(){ C.products = await qAll(() => sb.from('v_stock').select('*').order('name').order('id')); return C.products; }
 const opts = (arr, sel, empty) => (empty !== undefined ? `<option value="">${esc(empty)}</option>` : '') +
@@ -593,7 +597,7 @@ async function viewStock(){
 function docTable(rows, showType, scroll){
   if (!rows.length) return '<div class="empty">Документов нет</div>';
   return `<div class="tw${scroll?' scroll':''}"><table><thead><tr><th>№</th>${showType?'<th>Тип</th>':''}<th>Дата</th><th>Контрагент</th><th>Статус</th><th class="n">Позиций</th><th class="n">Сумма</th><th class="n">Оплачено</th><th>Создал</th><th>Комментарий</th></tr></thead><tbody>
-  ${rows.map(d => `<tr class="click" data-doc="${d.id}"><td>${esc(d.number)}</td>${showType?`<td>${T[d.type].one}</td>`:''}<td>${fdate(d.doc_date)}</td><td>${esc(d.counterparty)}</td><td>${badge(d.status,d.type)}</td>
+  ${rows.map(d => `<tr class="click" data-doc="${d.id}"><td>${esc(d.number)}${srcLine(d)}</td>${showType?`<td>${T[d.type].one}</td>`:''}<td>${fdate(d.doc_date)}</td><td>${esc(d.counterparty)}</td><td>${badge(d.status,d.type)}</td>
     <td class="n">${d.lines}</td><td class="n">${money(d.total)}</td><td class="n">${d.paid?money(Math.abs(d.paid)):''}</td><td class="small">${esc(d.created_by)}</td><td class="small muted">${esc(d.comment)}</td></tr>`).join('')}
   </tbody>${showType?'':`<tfoot><tr><td colspan="5">Итого</td><td class="n">${sum(rows,d=>d.lines)}</td><td class="n">${money(sum(rows,d=>d.total))}</td><td class="n">${money(sum(rows,d=>Math.abs(d.paid)))}</td><td colspan="2"></td></tr></tfoot>`}</table></div>`;
 }
@@ -644,6 +648,7 @@ async function viewDoc(id, type){
   }
   window.__lastDocType = type;
   const t = T[type];
+  const isEnter = type === 'enter';
   const editable = d.status==='draft' || (type==='order' && d.status==='draft');
   const orderLocked = type==='order' && d.status!=='draft';
   const ro = !editable || orderLocked;
@@ -658,9 +663,17 @@ async function viewDoc(id, type){
     <div class="field"><label class="f">Дата</label><input type="date" name="doc_date" value="${d.doc_date}" ${ro?'disabled':''}></div>
     ${t.cp ? `<div class="field" style="grid-column:span 2"><label class="f">${t.cp}</label><div class="row" style="flex-wrap:nowrap">
       <select name="counterparty_id" ${ro?'disabled':''}>${opts(C.cps, d.counterparty_id, '— не указан —')}</select>
-      ${ro?'':'<button id="newcp" title="Новый контрагент">+</button>'}</div></div>` : '<div style="grid-column:span 2"></div>'}
+      ${ro?'':'<button id="newcp" title="Новый контрагент">+</button>'}</div></div>`
+      : isEnter ? `<div class="field" style="grid-column:span 2"><label class="f">Источник товара *</label><select name="source" ${ro?'disabled':''}>
+        <option value="">${d.id && !d.source ? 'не указан' : '— выберите —'}</option>${Object.entries(SRC).map(([k,v]) => `<option value="${k}" ${k===d.source?'selected':''}>${v}</option>`).join('')}</select></div>`
+      : '<div style="grid-column:span 2"></div>'}
     ${['sale','order','customer_return'].includes(type) ? `<div class="field"><label class="f">Канал продажи</label><select name="channel_id" ${ro?'disabled':''}>${opts(C.channels,d.channel_id,'—')}</select></div>` : '<div></div>'}
-    ${t.extra ? `<div class="field" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}><div class="small faint">Эти расходы уже учтены в документе, отдельным платежом их вносить не нужно.</div></div>` : ''}
+    ${isEnter ? `<div class="field" id="fbought" style="grid-column:span 2"><label class="f">Поставщик</label><div class="row" style="flex-wrap:nowrap">
+        <select name="counterparty_id" ${ro?'disabled':''}>${opts(C.cps, d.counterparty_id, '— не указан —')}</select>${ro?'':'<button id="newcp" title="Новый контрагент">+</button>'}</div></div>
+      <div class="field" id="ffounder" style="grid-column:span 2"><label class="f">Чей вклад *</label><select name="founder_email" ${ro?'disabled':''}>
+        <option value="">— выберите —</option>${(C.members||[]).map(m => `<option value="${esc(m.email)}" ${m.email===d.founder_email?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+      <div class="field" style="grid-column:1/-1"><div class="small muted" id="srcnote"></div></div>` : ''}
+    ${t.extra ? `<div class="field" id="fextra" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}><div class="small faint">Эти расходы уже учтены в документе, отдельным платежом их вносить не нужно.</div></div>` : ''}
     <div class="field" style="grid-column:span ${t.extra?2:4}"><label class="f">Комментарий</label><input name="comment" value="${esc(d.comment)}" ${ro?'disabled':''}></div>
   </div>
   ${d.base_id ? `<p class="small muted" style="margin:10px 0 0">Создан на основании: <a href="#/doc/${d.base_id}">документа</a></p>` : ''}
@@ -670,13 +683,13 @@ async function viewDoc(id, type){
   <div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Позиции</h2><div style="flex:1"></div>
     ${ro ? '' : `<div class="picker" style="width:min(460px,100%)"><input id="padd" placeholder="Добавить товар: код, название, серийный номер"><div class="dd hidden" id="pdd"></div></div>
     ${['purchase','enter'].includes(type) ? '<button id="pnew">+ Новый товар</button>' : ''}`}</div>
-    <div class="tw items"><table><thead><tr><th>Код</th><th>Наименование</th><th class="n">Доступно</th><th class="n" style="width:120px">Количество, шт</th><th class="n" style="width:140px">${t.price}</th><th class="n">Сумма</th>
+    <div class="tw items"><table><thead><tr><th>Код</th><th>Наименование</th><th class="n">Доступно</th><th class="n" style="width:120px">Количество, шт</th><th class="n" style="width:140px" id="thprice">${t.price}</th><th class="n">Сумма</th>
       ${d.status==='posted' ? '<th class="n">Себест.</th>' : ''}${d.status==='posted' && ['sale'].includes(type) ? '<th class="n">Прибыль</th>':''}<th class="noprint"></th></tr></thead><tbody id="ibody"></tbody>
       <tfoot><tr><td colspan="3">Итого</td><td class="n" id="tq"></td><td></td><td class="n" id="ts"></td>${d.status==='posted'?'<td></td>':''}${d.status==='posted' && type==='sale'?'<td class="n" id="tp"></td>':''}<td class="noprint"></td></tr></tfoot></table></div>
   </div>
-  ${id && type!=='order' && type!=='enter' && type!=='writeoff' ? `<div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Оплаты</h2><div style="flex:1"></div><button id="addpay" class="noprint">+ ${['sale','supplier_return'].includes(type)?'Принять оплату':'Оплатить'}</button></div>
+  ${id && type!=='order' && type!=='writeoff' && (type!=='enter' || d.source==='bought') ? `<div class="panel"><div class="row" style="margin-bottom:8px"><h2 style="margin:0">Оплаты</h2><div style="flex:1"></div><button id="addpay" class="noprint">+ ${['sale','supplier_return'].includes(type)?'Принять оплату':'Оплатить'}</button></div>
     ${payTable(pays)}</div>` : ''}
-  ${!id && ['sale','purchase','customer_return','supplier_return'].includes(type) ? `<div class="panel noprint" id="paynow"><label class="row"><input type="checkbox" id="pn"> ${['sale','supplier_return'].includes(type)?'Оплата получена сразу':'Оплачено сразу'}</label>
+  ${!id && ['sale','purchase','customer_return','supplier_return','enter'].includes(type) ? `<div class="panel noprint${isEnter?' hidden':''}" id="paynow"><label class="row"><input type="checkbox" id="pn"> ${['sale','supplier_return'].includes(type)?'Оплата получена сразу':'Оплачено сразу'}</label>
     <div class="row hidden" id="pnacc" style="margin-top:8px"><span class="small muted">на счёт</span><select id="pnaccsel" style="width:auto">${opts(C.accounts,C.accounts[0]?.id)}</select></div></div>` : ''}`;
 
   const body = $('#ibody');
@@ -700,6 +713,23 @@ async function viewDoc(id, type){
   };
   let dirty = !id && items.length > 0;
   drawItems();
+  const applySource = () => {
+    if (!isEnter) return;
+    const sv = $('[name=source]').value;
+    $('#fbought').classList.toggle('hidden', sv !== 'bought');
+    $('#ffounder').classList.toggle('hidden', sv !== 'founder');
+    $('#fextra').classList.toggle('hidden', sv === 'founder');
+    if (sv === 'founder' && !ro) $('[name=extra_cost]').value = '';
+    $('#thprice').textContent = {bought:'Цена закупки за шт', founder:'Оценка за шт', opening:'Себестоимость за шт'}[sv] || t.price;
+    $('#srcnote').textContent = {
+      bought: 'Товар куплен. Можно сразу отметить оплату со счёта, тогда деньги спишутся из кассы. Если оплата будет позже, укажите поставщика: долг появится во «Взаиморасчётах».',
+      founder: 'Деньги из кассы не уходят. Стоимость товара по ценам ниже записывается как вклад выбранного учредителя в дело (видно в «Аналитике денег»).',
+      opening: 'Остаток на начало работы или излишек без оплаты. Деньги не затрагиваются.' }[sv] || '';
+    const pn = $('#paynow');
+    if (pn){ pn.classList.toggle('hidden', sv !== 'bought'); if (sv !== 'bought' && $('#pn')){ $('#pn').checked = false; $('#pnacc').classList.add('hidden'); } }
+  };
+  applySource();
+  if (isEnter && !ro) $('[name=source]').addEventListener('change', applySource);
 
   const addProduct = (p, qty=1, buy=null) => {
     const ex = items.find(i => i.product_id===p.id);
@@ -741,10 +771,15 @@ async function viewDoc(id, type){
 
   const save = async () => {
     const h = readForm($('#dhead'));
+    if (isEnter){
+      if (!h.source){ toast('Укажите источник товара', true); $('[name=source]').focus(); throw new Error('source'); }
+      if (h.source === 'founder' && !h.founder_email){ toast('Укажите, чей это вклад', true); $('[name=founder_email]').focus(); throw new Error('founder'); }
+    }
     if (!items.length){ toast('Добавьте хотя бы одну позицию', true); throw new Error('no items'); }
     if (items.some(i => !(i.qty > 0))){ toast('Количество должно быть больше нуля', true); throw new Error('qty'); }
-    const head = { type, doc_date: h.doc_date || today(), counterparty_id: h.counterparty_id ?? null, channel_id: h.channel_id ?? null,
-      extra_cost: h.extra_cost || 0, comment: h.comment, base_id: d.base_id };
+    const head = { type, doc_date: h.doc_date || today(), counterparty_id: (isEnter && h.source !== 'bought') ? null : (h.counterparty_id ?? null), channel_id: h.channel_id ?? null,
+      extra_cost: (isEnter && h.source === 'founder') ? 0 : (h.extra_cost || 0), comment: h.comment, base_id: d.base_id };
+    if (isEnter){ head.source = h.source; head.founder_email = h.source === 'founder' ? h.founder_email : null; }
     const payload = items.map(i => ({ product_id:i.product_id, qty:i.qty, price:i.price||0 }));
     const r = await sb.rpc('save_document', { p_id: id || null, p_head: head, p_items: payload });
     if (!r.error){ dirty = false; return r.data; }
@@ -761,7 +796,7 @@ async function viewDoc(id, type){
   const payNow = async (docId) => {
     if (!$('#pn') || !$('#pn').checked) return;
     const inDir = ['sale','supplier_return'].includes(type);
-    const itemName = {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю'}[type];
+    const itemName = {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю', enter:'Оплата поставщику'}[type];
     const amount = total(); if (!(amount > 0)) return;
     await q(sb.from('payments').insert({ pay_date: $('[name=doc_date]').value || today(), direction: inDir?'in':'out', amount,
       account_id: +$('#pnaccsel').value, item_id: C.items.find(x => x.name===itemName)?.id, counterparty_id: +$('[name=counterparty_id]').value || null, document_id: docId }));
@@ -795,6 +830,16 @@ async function viewDoc(id, type){
     btn('Сохранить', '', async () => { const nid = await save(); toast('Сохранено как черновик'); id ? route() : go('#/doc/'+nid); });
     btn('Провести', 'primary', async () => {
       if (!needChannel()) return;
+      if (isEnter){
+        const sv = $('[name=source]').value;
+        if (!sv){ toast('Укажите источник товара', true); $('[name=source]').focus(); return; }
+        if (sv === 'founder'){
+          if (!$('[name=founder_email]').value){ toast('Укажите, чей это вклад', true); $('[name=founder_email]').focus(); return; }
+          if (!(await confirmBox(`Провести как вклад учредителя ${memName($('[name=founder_email]').value)} на сумму ${money(total())}? Деньги из кассы не уходят. Отменить проведение потом будет нельзя, если товар уже продан или по нему есть движение.`))) return;
+        }
+        if (sv === 'bought' && !$('#pn').checked && !$('[name=counterparty_id]').value &&
+            !(await confirmBox('Оплата не отмечена и поставщик не указан: долг нигде не будет виден, а деньги из кассы не спишутся. Провести всё равно?'))) return;
+      }
       if (['purchase','enter'].includes(type) && items.some(i => !(i.price > 0)) && !(await confirmBox('В документе есть позиции с ценой 0, это снизит себестоимость остатка. Провести всё равно?'))) return;
       if (type==='sale'){
         const low = items.map(i => ({ i, p: prod(i.product_id) })).filter(({i,p}) => (p.min_price && i.price < p.min_price) || i.price < Math.round(p.avg_cost||0));
@@ -817,7 +862,7 @@ async function viewDoc(id, type){
 
   if ($('#addpay')) $('#addpay').onclick = () => payModal({ direction: ['sale','supplier_return'].includes(type)?'in':'out',
     amount: Math.max(0, total() - Math.abs(sum(pays.filter(p=>!p.voided_at),p=>p.amount))), counterparty_id: d.counterparty_id, document_id: id,
-    itemName: {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю'}[type] }, route);
+    itemName: {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю', enter:'Оплата поставщику'}[type] }, route);
   window.onbeforeunload = () => dirty ? true : null;
 }
 
@@ -917,8 +962,11 @@ async function viewPayments(_, params){
   $('#fgo').onclick = apply; $('#fd').onchange = apply; $('#fa').onchange = apply;
 }
 async function viewMoney(){
-  const [bal, pays] = await Promise.all([q(sb.from('v_account_balances').select('*').order('sort')),
-    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').is('voided_at',null).gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')).order('id'))]);
+  const [bal, pays, fc, fdocs] = await Promise.all([q(sb.from('v_account_balances').select('*').order('sort')),
+    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').is('voided_at',null).gte('pay_date', new Date(new Date().getFullYear(),0,1).toLocaleDateString('sv')).order('id')),
+    q(sb.from('v_founder_contributions').select('*').order('name')),
+    qAll(() => sb.from('v_doc_totals').select('*').eq('type','enter').eq('source','founder').eq('status','posted').order('doc_date',{ascending:false}).order('id',{ascending:false}))]);
+  const fTotal = sum(fc, f => +f.cash_in + +f.goods_in);
   const months = {}; pays.forEach(p => { const k = p.pay_date.slice(0,7); months[k] = months[k] || {in:0,out:0}; months[k][p.direction] += +p.amount; });
   const byItem = {}; pays.filter(p=>p.direction==='out').forEach(p => byItem[p.expense_items?.name||'Без статьи'] = (byItem[p.expense_items?.name||'Без статьи']||0) + +p.amount);
   $('#main').innerHTML = `<div class="head"><h1>Аналитика денег</h1><div class="sp"></div><button onclick="payModal({direction:'in'}, route)">+ Приход</button><button class="primary" onclick="payModal({direction:'out'}, route)">+ Расход</button></div>
@@ -930,7 +978,15 @@ async function viewMoney(){
     </tbody></table></div></div>
   <div class="panel"><h2>Расходы по статьям с начала года (включая оплату поставщикам)</h2><div class="tw"><table><tbody>
     ${Object.entries(byItem).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td></tr>`).join('') || '<tr><td class="empty">Нет расходов</td></tr>'}</tbody></table></div></div></div>
-  <p class="small muted">Начальный остаток денег на счёте вносится платежом «Приход» со статьёй «Вложение учредителя» или «Прочий приход».</p>`;
+  <div class="panel"><h2>Взносы учредителей</h2>
+    <div class="tw"><table><thead><tr><th>Учредитель</th><th class="n">Деньгами</th><th class="n">Товаром (по оценке)</th><th class="n">Всего вклад</th><th class="n">Доля вклада</th></tr></thead><tbody>
+    ${fc.map(f => { const tot = +f.cash_in + +f.goods_in; return `<tr><td>${esc(f.name)}</td><td class="n">${money(f.cash_in)}</td><td class="n">${money(f.goods_in)}</td><td class="n"><b>${money(tot)}</b></td><td class="n">${fTotal ? pct(tot / fTotal) : '-'}</td></tr>`; }).join('')}</tbody>
+    <tfoot><tr><td>Итого</td><td class="n">${money(sum(fc,f=>f.cash_in))}</td><td class="n">${money(sum(fc,f=>f.goods_in))}</td><td class="n">${money(fTotal)}</td><td class="n">${fTotal ? '100%' : '-'}</td></tr></tfoot></table></div>
+    <p class="small muted" style="margin:8px 0">Деньгами: приходы со статьёй «Взнос учредителя (имя)» в «Оборотах ДДС». Товаром: проведённые оприходования с источником «Внесено учредителем», по оценке (цена за штуку, умноженная на количество), которую указали в документе.</p>
+    ${fdocs.length ? `<h2 style="font-size:14px;margin:12px 0 6px">Товар, внесённый учредителями</h2><div class="tw"><table><thead><tr><th>Дата</th><th>Документ</th><th>Учредитель</th><th class="n">Количество, шт</th><th class="n">Оценка</th></tr></thead><tbody>
+      ${fdocs.map(d => `<tr class="click" data-doc="${d.id}"><td>${fdate(d.doc_date)}</td><td>${esc(d.number)}</td><td>${esc(memName(d.founder_email))}</td><td class="n">${num(d.qty)}</td><td class="n">${money(d.total)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>
+  <p class="small muted">Начальный остаток денег на счёте вносится платежом «Приход» со статьёй «Взнос учредителя (имя)» или «Прочий приход». Товар учредителя вносится оприходованием с источником «Внесено учредителем».</p>`;
+  bindDocRows();
 }
 async function viewSettlements(){
   const rows = (await q(sb.from('v_counterparty_balances').select('*').order('name'))).filter(r => Math.abs(r.balance) > 0.5);
@@ -969,7 +1025,7 @@ async function viewInventory(){
     const comment = 'Инвентаризация ' + fdate(today());
     for (const [type, list] of [['writeoff', diffs.filter(x=>x.d<0)], ['enter', diffs.filter(x=>x.d>0)]]){
       if (!list.length) continue;
-      const doc = await q(sb.from('documents').insert({ type, doc_date: today(), comment }).select().single());
+      const doc = await q(sb.from('documents').insert({ type, doc_date: today(), comment, ...(type === 'enter' ? { source: 'opening' } : {}) }).select().single());
       await q(sb.from('document_items').insert(list.map(x => ({ document_id:doc.id, product_id:x.p.id, qty:Math.abs(x.d), price: Math.round(x.p.avg_cost||0) }))));
       const { error } = await sb.rpc('post_document', { p_doc: doc.id }); if (error){ toast(error.message,true); return; }
     }
