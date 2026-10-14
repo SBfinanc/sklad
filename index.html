@@ -673,7 +673,7 @@ async function viewDoc(id, type){
       <div class="field" id="ffounder" style="grid-column:span 2"><label class="f">Чей вклад *</label><select name="founder_email" ${ro?'disabled':''}>
         <option value="">— выберите —</option>${(C.members||[]).map(m => `<option value="${esc(m.email)}" ${m.email===d.founder_email?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
       <div class="field" style="grid-column:1/-1"><div class="small muted" id="srcnote"></div></div>` : ''}
-    ${t.extra ? `<div class="field" id="fextra" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}><div class="small faint">Эти расходы уже учтены в документе, отдельным платежом их вносить не нужно.</div></div>` : ''}
+    ${t.extra ? `<div class="field" id="fextra" style="grid-column:span 2"><label class="f">${t.extra}, ₸</label><input type="number" step="1" name="extra_cost" value="${+d.extra_cost||''}" ${ro?'disabled':''}><div class="small faint">${['purchase','enter'].includes(type) ? 'Входят в себестоимость товара. При оплате документа (галочка «Оплачено сразу» или кнопка «Оплатить») списываются из кассы вместе с товаром, в долг поставщику не попадают.' : 'Эти расходы уже учтены в документе, отдельным платежом их вносить не нужно.'}</div></div>` : ''}
     <div class="field" style="grid-column:span ${t.extra?2:4}"><label class="f">Комментарий</label><input name="comment" value="${esc(d.comment)}" ${ro?'disabled':''}></div>
   </div>
   ${d.base_id ? `<p class="small muted" style="margin:10px 0 0">Создан на основании: <a href="#/doc/${d.base_id}">документа</a></p>` : ''}
@@ -798,7 +798,8 @@ async function viewDoc(id, type){
     const inDir = ['sale','supplier_return'].includes(type);
     const itemName = {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю', enter:'Оплата поставщику'}[type];
     const amount = total(); if (!(amount > 0)) return;
-    await q(sb.from('payments').insert({ pay_date: $('[name=doc_date]').value || today(), direction: inDir?'in':'out', amount,
+    const ex = ['purchase','enter'].includes(type) ? Math.max(0, +($('[name=extra_cost]')?.value) || 0) : 0;
+    await q(sb.from('payments').insert({ pay_date: $('[name=doc_date]').value || today(), direction: inDir?'in':'out', amount: amount + ex, extra_part: ex,
       account_id: +$('#pnaccsel').value, item_id: C.items.find(x => x.name===itemName)?.id, counterparty_id: +$('[name=counterparty_id]').value || null, document_id: docId }));
   };
 
@@ -861,7 +862,11 @@ async function viewDoc(id, type){
     await q(sb.from('documents').delete().eq('id',id)); toast('Удалено'); go('#/docs/'+type); });
 
   if ($('#addpay')) $('#addpay').onclick = () => payModal({ direction: ['sale','supplier_return'].includes(type)?'in':'out',
-    amount: Math.max(0, total() - Math.abs(sum(pays.filter(p=>!p.voided_at),p=>p.amount))), counterparty_id: d.counterparty_id, document_id: id,
+    ...(() => { const live = pays.filter(p=>!p.voided_at);
+      const itemsLeft = Math.max(0, total() - Math.abs(sum(live, p => p.amount - (+p.extra_part||0))));
+      const exLeft = ['purchase','enter'].includes(type) ? Math.max(0, (+d.extra_cost||0) - sum(live, p => +p.extra_part||0)) : 0;
+      return { amount: itemsLeft + exLeft, extra_part: exLeft, extra_max: exLeft }; })(),
+    counterparty_id: d.counterparty_id, document_id: id,
     itemName: {sale:'Оплата от покупателя', supplier_return:'Возврат от поставщика', purchase:'Оплата поставщику', customer_return:'Возврат покупателю', enter:'Оплата поставщику'}[type] }, route);
   window.onbeforeunload = () => dirty ? true : null;
 }
@@ -921,7 +926,7 @@ function payTable(rows){
   return `<div class="tw"><table><thead><tr><th>Дата</th><th>Тип</th><th>Статья</th><th>Счёт</th><th>Контрагент</th><th>Документ</th><th class="n">Сумма</th><th>Внёс</th><th>Комментарий</th><th class="noprint"></th></tr></thead><tbody>
   ${rows.map(p => `<tr${p.voided_at?' class="voided"':''}><td>${fdate(p.pay_date)}</td><td>${p.direction==='in'?'<span class="pos">Приход</span>':'<span class="neg">Расход</span>'}</td><td>${esc(p.expense_items?.name)}</td><td>${esc(p.accounts?.name)}</td>
     <td>${esc(p.counterparties?.name)}</td><td>${p.documents ? `<a href="#/doc/${p.document_id}">${esc(p.documents.number)}</a>` : ''}</td>
-    <td class="n ${p.direction==='in'?'pos':'neg'}">${p.direction==='in'?'+':'−'}${money(p.amount)}</td><td class="small">${esc(p.created_by)}</td><td class="small muted">${esc(p.comment)}${p.voided_at?`<span class="vnote">Аннулирован: ${esc(p.voided_by)||''}, ${new Date(p.voided_at).toLocaleDateString('ru-RU',{timeZone:'Asia/Almaty'})}</span>`:''}</td>
+    <td class="n ${p.direction==='in'?'pos':'neg'}">${p.direction==='in'?'+':'−'}${money(p.amount)}${+p.extra_part>0?`<div class="small faint">в т.ч. доставка и накладные ${money(p.extra_part)}</div>`:''}</td><td class="small">${esc(p.created_by)}</td><td class="small muted">${esc(p.comment)}${p.voided_at?`<span class="vnote">Аннулирован: ${esc(p.voided_by)||''}, ${new Date(p.voided_at).toLocaleDateString('ru-RU',{timeZone:'Asia/Almaty'})}</span>`:''}</td>
     <td class="noprint">${p.voided_at?'':`<button class="link" data-pdel="${p.id}" title="Аннулировать">✕</button>`}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function bindPayDel(){ $$('[data-pdel]').forEach(b => b.onclick = async () => { if (await confirmBox('Аннулировать запись? Она останется в списке, но в расчёты не попадёт. Вернуть её будет нельзя.')){ await q(sb.from('payments').update({voided_at:new Date().toISOString()}).eq('id',b.dataset.pdel)); toast('Аннулировано'); route(); } }); }
@@ -934,6 +939,7 @@ function payModal(pre={}, cb){
     <div class="field"><label class="f">Счёт</label><select name="account_id">${opts(C.accounts, C.accounts[0]?.id)}</select></div>
     <div class="field"><label class="f">Статья</label><select name="item_id" id="pyitem"></select></div>
     <div class="field"><label class="f">Контрагент</label><select name="counterparty_id">${opts(C.cps, pre.counterparty_id, '—')}</select></div>
+    ${pre.extra_max > 0 ? `<div class="field"><label class="f">Из них доставка и накладные, ₸</label><input type="number" step="1" name="extra_part" value="${Math.round(pre.extra_part||0)}"><div class="small faint">Входит в сумму и списывается из кассы, но в долг поставщику не попадает.</div></div>` : ''}
     <div class="field" style="grid-column:1/-1"><label class="f">Комментарий</label><input name="comment"></div></div>
     <div class="acts"><button data-c>Отмена</button><button class="primary" data-s>Сохранить</button></div>`, (m, close) => {
       const fill = () => { const d = $('[name=direction]',m).value; const its = C.items.filter(i => i.kind===(d==='in'?'income':'expense'));
@@ -941,6 +947,9 @@ function payModal(pre={}, cb){
       fill(); $('[name=direction]',m).onchange = fill; $('[data-c]',m).onclick = close;
       $('[data-s]',m).onclick = async () => { const o = readForm($('#pyf',m)); if (!(o.amount>0)){ toast('Введите сумму',true); return; }
         if (pre.document_id) o.document_id = pre.document_id;
+        if (pre.extra_max > 0){ o.extra_part = Math.max(0, +o.extra_part || 0);
+          if (o.extra_part > o.amount){ toast('Доставка и накладные не могут быть больше суммы платежа',true); return; } }
+        else delete o.extra_part;
         await q(sb.from('payments').insert(o)); toast('Платёж сохранён'); close(); cb && cb(); };
     });
 }
