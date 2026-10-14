@@ -837,7 +837,7 @@ async function viewDoc(id, type){
           if (!$('[name=founder_email]').value){ toast('Укажите, чей это вклад', true); $('[name=founder_email]').focus(); return; }
           if (!(await confirmBox(`Провести как вклад учредителя ${memName($('[name=founder_email]').value)} на сумму ${money(total())}? Деньги из кассы не уходят. Отменить проведение потом будет нельзя, если товар уже продан или по нему есть движение.`))) return;
         }
-        if (sv === 'bought' && !$('#pn').checked && !$('[name=counterparty_id]').value &&
+        if (sv === 'bought' && !$('#pn')?.checked && !$('[name=counterparty_id]').value &&
             !(await confirmBox('Оплата не отмечена и поставщик не указан: долг нигде не будет виден, а деньги из кассы не спишутся. Провести всё равно?'))) return;
       }
       if (['purchase','enter'].includes(type) && items.some(i => !(i.price > 0)) && !(await confirmBox('В документе есть позиции с ценой 0, это снизит себестоимость остатка. Провести всё равно?'))) return;
