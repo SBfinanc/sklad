@@ -353,14 +353,14 @@ async function viewDashboard(_, params){
   const from = params.get('from') || monthStart(), to = params.get('to') || monthEnd();
   const [lines, pays, stock, bal, cpb, losses] = await Promise.all([
     qAll(() => sb.from('v_sale_lines').select('*').gte('doc_date',from).lte('doc_date',to).order('doc_date').order('document_id').order('product_id')),
-    qAll(() => sb.from('payments').select('amount,direction,pay_date,expense_items(name)').is('voided_at',null).gte('pay_date',from).lte('pay_date',to).order('id')),
+    qAll(() => sb.from('payments').select('amount,extra_part,direction,pay_date,expense_items(name)').is('voided_at',null).gte('pay_date',from).lte('pay_date',to).order('id')),
     loadProducts(),
     q(sb.from('v_account_balances').select('*').order('sort')),
     q(sb.from('v_counterparty_balances').select('balance')),
     qAll(() => sb.from('v_loss_lines').select('loss').gte('doc_date',from).lte('doc_date',to).order('document_id').order('product_id')),
   ]);
   const revenue = sum(lines, x=>x.revenue), gross = sum(lines, x=>x.profit), cogs = sum(lines, x=>x.cost), lossSum = sum(losses, x=>x.loss);
-  const opex = sum(pays.filter(p => p.direction==='out' && !OPEX_EXCLUDE.includes(p.expense_items?.name)), p=>p.amount);
+  const opex = sum(pays.filter(p => p.direction==='out' && !OPEX_EXCLUDE.includes(p.expense_items?.name)), p=>p.amount - (+p.extra_part||0));
   const soldQty = sum(lines, x=>x.qty);
   const saleDocs = new Set(lines.filter(x=>x.type==='sale').map(x=>x.document_id)).size;
   const inStock = stock.filter(p => p.stock > 0);
